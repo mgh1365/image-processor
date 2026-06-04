@@ -25,51 +25,59 @@
       <div id="uploadStatus" class="status-text"></div>
     </section>
 
-    <div class="settings-grid">
-      <section class="card">
-        <h2>ابعاد و رزولوشن</h2>
-        <div class="input-group">
-          <label>اندازه نهایی (cm)</label>
-          <input type="number" id="sizeInput" value="15" min="1" max="100" step="0.5" />
-        </div>
-        <div class="input-group">
-          <label>رزولوشن (DPI)</label>
-          <input type="number" id="dpiInput" value="150" min="72" max="300" step="1" />
-        </div>
-      </section>
+    <!-- بخش تنظیمات آکاردئونی (مخفی به صورت پیش‌فرض) -->
+    <details class="card settings-accordion">
+      <summary class="accordion-summary">
+        <span class="summary-title">⚙️ تنظیمات پردازش (ابعاد، حجم، حاشیه، واترمارک)</span>
+        <span class="summary-icon">▼</span>
+      </summary>
+      
+      <div class="settings-grid">
+        <section class="nested-card">
+          <h2>ابعاد و رزولوشن</h2>
+          <div class="input-group">
+            <label>اندازه نهایی (cm)</label>
+            <input type="number" id="sizeInput" value="15" min="1" max="100" step="0.5" />
+          </div>
+          <div class="input-group">
+            <label>رزولوشن (DPI)</label>
+            <input type="number" id="dpiInput" value="150" min="72" max="300" step="1" />
+          </div>
+        </section>
 
-      <section class="card">
-        <h2>فشرده‌سازی</h2>
-        <div class="input-group">
-          <label>حجم هدف (KB)</label>
-          <input type="number" id="targetSizeInput" value="200" min="10" max="5000" step="10" />
-        </div>
-      </section>
+        <section class="nested-card">
+          <h2>فشرده‌سازی</h2>
+          <div class="input-group">
+            <label>حجم هدف (KB)</label>
+            <input type="number" id="targetSizeInput" value="200" min="10" max="5000" step="10" />
+          </div>
+        </section>
 
-      <section class="card">
-        <h2>حاشیه و بوم</h2>
-        <div class="input-group">
-          <label>ضخامت حاشیه (px)</label>
-          <input type="number" id="borderWidthInput" value="2" min="0" max="50" step="1" />
-        </div>
-        <div class="input-group">
-          <label>توسعه بوم (px)</label>
-          <input type="number" id="canvasExpandInput" value="3" min="0" max="50" step="1" />
-        </div>
-        <div class="input-group">
-          <label>رنگ حاشیه</label>
-          <input type="color" id="borderColorInput" value="#000000" />
-        </div>
-      </section>
+        <section class="nested-card">
+          <h2>حاشیه و بوم</h2>
+          <div class="input-group">
+            <label>ضخامت حاشیه (px)</label>
+            <input type="number" id="borderWidthInput" value="2" min="0" max="50" step="1" />
+          </div>
+          <div class="input-group">
+            <label>توسعه بوم (px)</label>
+            <input type="number" id="canvasExpandInput" value="3" min="0" max="50" step="1" />
+          </div>
+          <div class="input-group">
+            <label>رنگ حاشیه</label>
+            <input type="color" id="borderColorInput" value="#000000" />
+          </div>
+        </section>
 
-      <section class="card">
-        <h2>واترمارک</h2>
-        <label class="checkbox-label">
-          <input type="checkbox" id="stampEnabledInput" checked />
-          <span>اعمال مهر (assets/stamp.png)</span>
-        </label>
-      </section>
-    </div>
+        <section class="nested-card">
+          <h2>واترمارک</h2>
+          <label class="checkbox-label">
+            <input type="checkbox" id="stampEnabledInput" checked />
+            <span>اعمال مهر (assets/stamp.png)</span>
+          </label>
+        </section>
+      </div>
+    </details>
 
     <!-- بخش لیست پیش‌نمایش و نام‌گذاری فایل‌ها -->
     <section id="fileListCard" class="card" style="display: none;">
