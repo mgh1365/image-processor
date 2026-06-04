@@ -1,232 +1,390 @@
+/**
+ * Image Processing — Web App (v3.4 - Fixes applied: Clear All, Live Filter, High-Res Stamp)
+ */
+
 const STAMP_PATH = 'assets/stamp.png';
-const SECRET_CHARS = ['n', 'o', 'r', 'u', 'z', 'k', 'h', 'a', 'n'];
+const SECRET_CHARS = ['n', 'o', 'r', 'u', 'z', 'k', 'h', 'a', 'n']; // آرایه حروف مخفی
 
-let readyImages = [];
+let readyImages = []; 
 let processQueue = [];
-let currentProcessIndex = -1;
+let currentProcessIndex = 0;
 let cropperInstance = null;
-let currentFileObj = null;
+let imageCounter = 0;
 
+// DOM Elements
+const fileInput = document.getElementById('fileInput');
 const cropModal = document.getElementById('cropModal');
 const cropImage = document.getElementById('cropImage');
 const confirmCropBtn = document.getElementById('confirmCropBtn');
-const fileInput = document.getElementById('fileInput');
+const uploadStatus = document.getElementById('uploadStatus');
+const fileListCard = document.getElementById('fileListCard');
 const fileListContainer = document.getElementById('fileListContainer');
+const cropModalTitle = document.getElementById('cropModalTitle');
 
 // Editor controls
-const rotSlider = document.getElementById('rotationSlider');
-const briSlider = document.getElementById('brightnessSlider');
-const conSlider = document.getElementById('contrastSlider');
-const satSlider = document.getElementById('saturateSlider');
-const rotVal = document.getElementById('rotVal');
+const rotationSlider = document.getElementById('rotationSlider');
+const brightnessSlider = document.getElementById('brightnessSlider');
+const contrastSlider = document.getElementById('contrastSlider');
+const saturateSlider = document.getElementById('saturateSlider');
+
+// Value displays
+const rotationValue = document.getElementById('rotationValue');
+const brightnessValue = document.getElementById('brightnessValue');
+const contrastValue = document.getElementById('contrastValue');
+const saturateValue = document.getElementById('saturateValue');
 
 // --- Helpers ---
-function cmToPx(cm, dpi) {
-  return Math.round((cm / 2.54) * dpi);
+function cmToPx(cm, dpi) { return Math.round((cm / 2.54) * dpi); }
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Load Error for ${src}`));
+    img.src = src;
+  });
 }
 
-function setStatus(msg) {
-  document.getElementById('status').textContent = msg;
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+function setUploadStatus(msg) { uploadStatus.textContent = msg; }
+
+function getBaseName(fileName) {
+  if (!fileName) return `image_${Date.now()}`;
+  const lastDot = fileName.lastIndexOf('.');
+  return lastDot !== -1 ? fileName.substring(0, lastDot) : fileName;
 }
 
 function getFormattedTimestamp() {
   const d = new Date();
-  return d.getFullYear() +
-         String(d.getMonth() + 1).padStart(2, '0') +
-         String(d.getDate()).padStart(2, '0') + '_' +
-         String(d.getHours()).padStart(2, '0') +
-         String(d.getMinutes()).padStart(2, '0') +
-         String(d.getSeconds()).padStart(2, '0');
+  const pad = (n) => n.toString().padStart(2, '0');
+  const timeStr = pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
+  try {
+    const pDate = new Intl.DateTimeFormat('fa-IR', { calendar: 'persian', numberingSystem: 'latn', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    return `${pDate.replace(/\//g, '')},${timeStr}`;
+  } catch (err) {
+    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())},${timeStr}`;
+  }
 }
 
-// --- List Management ---
+// --- Clear List Logic ---
 function clearList() {
+  // Release memory
+  readyImages.forEach(item => URL.revokeObjectURL(item.blobUrl));
+  processQueue.forEach(item => URL.revokeObjectURL(item.blobUrl));
+  
+  // Reset states
   readyImages = [];
   processQueue = [];
-  fileListContainer.innerHTML = '';
+  currentProcessIndex = 0;
   fileInput.value = '';
+  
+  // Reset UI
+  fileListContainer.innerHTML = '';
+  fileListCard.style.display = 'none';
+  cropModal.style.display = 'none';
+  
+  if (cropperInstance) {
+    cropperInstance.destroy();
+    cropperInstance = null;
+  }
+  
+  setUploadStatus('لیست تصاویر کاملاً پاک شد.');
   setStatus('');
 }
 
 document.getElementById('clearBtnTop').addEventListener('click', clearList);
 document.getElementById('clearBtnBottom').addEventListener('click', clearList);
 
-// --- File Upload & Queue ---
-fileInput.addEventListener('change', (e) => {
-  const files = Array.from(e.target.files);
-  if (!files.length) return;
-  processQueue = processQueue.concat(files);
-  if (cropModal.style.display !== 'flex') {
-    startNextInQueue();
+// --- Editor & Queue Logic ---
+fileInput.addEventListener('change', async (e) => {
+  const files = e.target.files;
+  if (!files || files.length === 0) return;
+
+  setUploadStatus('در حال آماده‌سازی تصاویر...');
+  
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const objectUrl = URL.createObjectURL(file);
+    processQueue.push({ originalName: file.name, blobUrl: objectUrl });
   }
+  
+  fileInput.value = '';
+  startNextInQueue();
 });
 
 function startNextInQueue() {
-  if (processQueue.length === 0) {
-    cropModal.style.display = 'none';
-    renderFileList();
-    return;
-  }
-  
-  currentFileObj = processQueue.shift();
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    cropImage.src = e.target.result;
-    cropModal.style.display = 'flex';
+  if (currentProcessIndex < processQueue.length) {
+    const currentItem = processQueue[currentProcessIndex];
+    cropModalTitle.textContent = `تنظیمات تصویر (${currentProcessIndex + 1} از ${processQueue.length})`;
+    
     resetEditorControls();
     
+    cropImage.src = currentItem.blobUrl;
+    cropModal.style.display = 'flex';
+
     if (cropperInstance) cropperInstance.destroy();
-    cropperInstance = new Cropper(cropImage, {
-      viewMode: 1,
-      autoCropArea: 1,
-      ready() {
-        updateFilterPreview();
-      }
-    });
-  };
-  reader.readAsDataURL(currentFileObj);
+
+    cropImage.onload = () => {
+      cropperInstance = new Cropper(cropImage, {
+        aspectRatio: 1,
+        viewMode: 1,
+        dragMode: 'move',
+        autoCropArea: 1,
+        background: false,
+        ready: function () {
+          updateFilterPreview();
+        }
+      });
+    };
+  } else {
+    cropModal.style.display = 'none';
+    renderFileList();
+    processQueue = [];
+    currentProcessIndex = 0;
+  }
 }
 
 function resetEditorControls() {
-  rotSlider.value = 0;
-  briSlider.value = 100;
-  conSlider.value = 100;
-  satSlider.value = 100;
-  rotVal.textContent = "0";
+  rotationSlider.value = 0;
+  brightnessSlider.value = 100;
+  contrastSlider.value = 100;
+  saturateSlider.value = 100;
+  
+  rotationValue.textContent = '0';
+  brightnessValue.textContent = '100';
+  contrastValue.textContent = '100';
+  saturateValue.textContent = '100';
 }
 
 function updateFilterPreview() {
-  const filterStr = `brightness(${briSlider.value}%) contrast(${conSlider.value}%) saturate(${satSlider.value}%)`;
-  document.querySelector('.cropper-view-box img').style.filter = filterStr;
-  document.querySelector('.cropper-canvas img').style.filter = filterStr;
+  // Target ALL images inside the Cropper container to ensure the crop box itself shows the filter
+  const cropperImages = document.querySelectorAll('.cropper-container img');
+  const filterString = `brightness(${brightnessSlider.value}%) contrast(${contrastSlider.value}%) saturate(${saturateSlider.value}%)`;
+  
+  cropperImages.forEach(img => {
+    img.style.filter = filterString;
+  });
 }
 
-rotSlider.addEventListener('input', (e) => {
-  rotVal.textContent = e.target.value;
-  if (cropperInstance) cropperInstance.rotateTo(parseFloat(e.target.value));
+// Event listeners for editor controls
+rotationSlider.addEventListener('input', (e) => {
+  if (cropperInstance) {
+    cropperInstance.rotateTo(Number(e.target.value));
+    rotationValue.textContent = e.target.value;
+  }
 });
 
-[briSlider, conSlider, satSlider].forEach(slider => {
-  slider.addEventListener('input', updateFilterPreview);
+brightnessSlider.addEventListener('input', (e) => {
+  brightnessValue.textContent = e.target.value;
+  updateFilterPreview();
+});
+contrastSlider.addEventListener('input', (e) => {
+  contrastValue.textContent = e.target.value;
+  updateFilterPreview();
+});
+saturateSlider.addEventListener('input', (e) => {
+  saturateValue.textContent = e.target.value;
+  updateFilterPreview();
 });
 
 confirmCropBtn.addEventListener('click', () => {
   if (!cropperInstance) return;
+
+  const currentItem = processQueue[currentProcessIndex];
   
-  const canvas = cropperInstance.getCroppedCanvas();
-  const ctx = canvas.getContext('2d');
+  const croppedCanvas = cropperInstance.getCroppedCanvas({
+    fillColor: '#ffffff',
+    imageSmoothingEnabled: true,
+    imageSmoothingQuality: 'high'
+  });
+
+  const finalCanvas = document.createElement('canvas');
+  finalCanvas.width = croppedCanvas.width;
+  finalCanvas.height = croppedCanvas.height;
+  const finalCtx = finalCanvas.getContext('2d');
   
-  // اعمال فیلترها روی تصویر نهایی برش خورده
-  const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = canvas.width;
-  tempCanvas.height = canvas.height;
-  const tempCtx = tempCanvas.getContext('2d');
-  tempCtx.filter = `brightness(${briSlider.value}%) contrast(${conSlider.value}%) saturate(${satSlider.value}%)`;
-  tempCtx.drawImage(canvas, 0, 0);
-  
-  tempCanvas.toBlob((blob) => {
+  finalCtx.filter = `brightness(${brightnessSlider.value}%) contrast(${contrastSlider.value}%) saturate(${saturateSlider.value}%)`;
+  finalCtx.drawImage(croppedCanvas, 0, 0);
+
+  finalCanvas.toBlob((blob) => {
     readyImages.push({
-      originalName: currentFileObj.name,
-      blob: blob,
-      previewUrl: URL.createObjectURL(blob)
+      id: `img_${imageCounter++}`,
+      originalName: currentItem.originalName,
+      blobUrl: URL.createObjectURL(blob)
     });
+
+    currentProcessIndex++;
     startNextInQueue();
   }, 'image/jpeg', 0.95);
 });
 
 function renderFileList() {
+  if (readyImages.length === 0) {
+    setUploadStatus('لیست تصاویر خالی است.');
+    return;
+  }
+  
+  setUploadStatus(`تعداد ${readyImages.length} تصویر در لیست آماده پردازش است.`);
+  fileListCard.style.display = 'block';
   fileListContainer.innerHTML = '';
-  readyImages.forEach((imgObj, index) => {
-    const defaultName = imgObj.originalName.replace(/\.[^/.]+$/, "");
+
+  readyImages.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'file-item';
+
+    const thumb = document.createElement('img');
+    thumb.src = item.blobUrl;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = `nameInput_${item.id}`;
     
-    const div = document.createElement('div');
-    div.className = 'file-item';
-    div.innerHTML = `
-      <img src="${imgObj.previewUrl}" alt="preview" />
-      <input type="text" id="nameInput_${index}" value="${defaultName}" placeholder="نام فایل خروجی" />
-    `;
-    fileListContainer.appendChild(div);
+    const baseName = getBaseName(item.originalName);
+    input.placeholder = `نام دلخواه (پیش‌فرض: ${baseName})`;
+
+    row.appendChild(thumb);
+    row.appendChild(input);
+    fileListContainer.appendChild(row);
   });
 }
 
-// --- Processing Functions ---
+// --- Final Processing Logic ---
+async function startProcessing() {
+  if (!readyImages.length) {
+    setStatus('تصویری در لیست برای پردازش وجود ندارد.');
+    return;
+  }
+
+  const sizeCm = parseFloat(document.getElementById('sizeInput').value) || 15;
+  const dpi = parseInt(document.getElementById('dpiInput').value) || 150;
+  const targetKB = parseFloat(document.getElementById('targetSizeInput').value) || 200;
+  const borderW = parseInt(document.getElementById('borderWidthInput').value) || 0;
+  const canvasEx = parseInt(document.getElementById('canvasExpandInput').value) || 0;
+  const borderC = document.getElementById('borderColorInput').value;
+  const doStamp = document.getElementById('stampEnabledInput').checked;
+  const doWatermark = document.getElementById('watermarkEnabledInput') ? document.getElementById('watermarkEnabledInput').checked : false;
+
+  const sizePx = cmToPx(sizeCm, dpi);
+  const timestampSuffix = getFormattedTimestamp();
+
+  let stampImg = null;
+  if (doStamp) {
+    try { stampImg = await loadImage(STAMP_PATH); } 
+    catch { setStatus('⚠️ مهر یافت نشد - ادامه بدون مهر'); }
+  }
+
+  setStatus(`در حال پردازش...`);
+
+  for (let i = 0; i < readyImages.length; i++) {
+    const currentItem = readyImages[i];
+    setStatus(`در حال پردازش ${i + 1} از ${readyImages.length}...`);
+
+    try {
+      const img = await loadImage(currentItem.blobUrl);
+      let canvas = resizeToSquare(img, sizePx);
+      canvas = applyBorder(canvas, borderW, borderC, canvasEx);
+      if (stampImg) canvas = await applyStamp(canvas, stampImg);
+      
+      // اعمال واترمارک حروف پراکنده و مخفی
+      if (doWatermark) {
+        canvas = applyScatteredWatermark(canvas, SECRET_CHARS);
+      }
+      
+      const blob = await compressToTargetSize(canvas, targetKB);
+
+      const inputEl = document.getElementById(`nameInput_${currentItem.id}`);
+      let customName = inputEl && inputEl.value.trim() !== '' ? inputEl.value.trim() : getBaseName(currentItem.originalName);
+      
+      const ext = blob.type === 'image/jpeg' ? 'jpg' : 'png';
+      const finalFileName = `${customName}_${timestampSuffix}.${ext}`;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = finalFileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      setStatus(`❌ خطا در پردازش: ${err.message}`);
+    }
+  }
+  setStatus(`✅ عملیات کامل شد.`);
+}
+
 function resizeToSquare(img, sizePx) {
   const canvas = document.createElement('canvas');
-  canvas.width = sizePx;
-  canvas.height = sizePx;
+  canvas.width = sizePx; canvas.height = sizePx;
   const ctx = canvas.getContext('2d');
+  
+  // Highest quality image rendering for the main background
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, sizePx, sizePx);
-  
-  const ratio = Math.min(sizePx / img.width, sizePx / img.height);
-  const dw = Math.round(img.width * ratio);
-  const dh = Math.round(img.height * ratio);
-  const dx = Math.round((sizePx - dw) / 2);
-  const dy = Math.round((sizePx - dh) / 2);
-  
-  ctx.drawImage(img, dx, dy, dw, dh);
+  ctx.drawImage(img, 0, 0, sizePx, sizePx);
   return canvas;
 }
 
 function applyBorder(srcCanvas, borderWidth, borderColor, expandValue) {
-  const w = srcCanvas.width + expandValue * 2;
-  const h = srcCanvas.height + expandValue * 2;
+  const expand = expandValue > 0 ? expandValue : 0;
+  const w = srcCanvas.width + expand * 2, h = srcCanvas.height + expand * 2;
+  const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
   
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   
+  canvas.width = w; canvas.height = h;
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, w, h);
-  ctx.drawImage(srcCanvas, expandValue, expandValue);
-  
+  ctx.drawImage(srcCanvas, expand, expand);
   if (borderWidth > 0) {
-    ctx.strokeStyle = borderColor;
+    const bx = expand, by = expand;
+    ctx.strokeStyle = borderColor; 
     ctx.lineWidth = borderWidth;
-    ctx.strokeRect(expandValue, expandValue, srcCanvas.width, srcCanvas.height);
+    ctx.strokeRect(bx + borderWidth / 2, by + borderWidth / 2, srcCanvas.width - borderWidth, srcCanvas.height - borderWidth);
   }
   return canvas;
 }
 
 async function applyStamp(canvas, stampImg) {
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width;
-  const h = canvas.height;
+  const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
   
-  const maxStampW = Math.round(w * 0.25);
-  const stampW = Math.min(stampImg.naturalWidth, maxStampW);
+  // Ensure the highest quality rendering for the stamp/watermark
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  
+  const maxStampW = Math.round(w * 0.25), stampW = Math.min(stampImg.naturalWidth, maxStampW);
   const stampH = Math.round((stampImg.naturalHeight / stampImg.naturalWidth) * stampW);
-  
-  const margin = Math.round(w * 0.025);
-  const sx = margin;
-  const sy = h - stampH - margin;
+  const margin = Math.round(w * 0.025), sx = margin, sy = h - stampH - margin;
   
   ctx.drawImage(stampImg, sx, sy, stampW, stampH);
   return canvas;
 }
 
-// تابع جدید: اعمال واترمارک مخفی پراکنده
+// تابع اعمال حروف پراکنده
 function applyScatteredWatermark(canvas, textArray) {
   const ctx = canvas.getContext('2d');
   const w = canvas.width;
   const h = canvas.height;
   
-  // رنگ بسیار کم‌رنگ برای مخفی ماندن
+  // رنگ بسیار کم‌رنگ (اوپاسیتی 3 درصد)
   ctx.fillStyle = 'rgba(128, 128, 128, 0.03)';
-  ctx.font = `${Math.floor(w * 0.05)}px Tahoma`;
+  ctx.font = `${Math.floor(w * 0.05)}px Arial`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   
-  // پراکنده کردن حروف در نقاط مختلف تصویر
   textArray.forEach(char => {
     const rx = Math.random() * (w * 0.8) + (w * 0.1);
     const ry = Math.random() * (h * 0.8) + (h * 0.1);
     
     ctx.save();
     ctx.translate(rx, ry);
-    ctx.rotate((Math.random() - 0.5) * Math.PI / 2); // چرخش تصادفی
+    ctx.rotate((Math.random() - 0.5) * Math.PI / 2); 
     ctx.fillText(char, 0, 0);
     ctx.restore();
   });
@@ -236,98 +394,24 @@ function applyScatteredWatermark(canvas, textArray) {
 
 async function compressToTargetSize(canvas, targetKB) {
   const targetBytes = targetKB * 1024;
-  let lo = 0.01, hi = 0.99, best = null;
-  
-  for (let i = 0; i < 20; i++) {
-    const mid = (lo + hi) / 2;
-    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', mid));
-    if (blob.size <= targetBytes) {
-      best = blob;
-      lo = mid;
-    } else {
-      hi = mid;
-    }
-  }
-  return best || await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.01));
-}
+  let quality = 0.9;
+  let currentBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', quality));
 
-// --- Main Processing ---
-async function startProcessing() {
-  if (!readyImages.length) {
-    setStatus('لطفاً ابتدا تصاویری برای پردازش اضافه و ویرایش کنید.');
-    return;
+  while (currentBlob.size > targetBytes && quality > 0.1) {
+    quality -= 0.1;
+    currentBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', quality));
   }
   
-  const sizeCm = parseFloat(document.getElementById('sizeInput').value) || 15;
-  const dpi = parseInt(document.getElementById('dpiInput').value) || 96;
-  const targetKB = parseFloat(document.getElementById('targetSizeInput').value) || 200;
-  const borderW = parseInt(document.getElementById('borderWidthInput').value) || 0;
-  const canvasEx = parseInt(document.getElementById('canvasExpandInput').value) || 0;
-  const borderC = document.getElementById('borderColorInput').value;
-  const doStamp = document.getElementById('stampEnabledInput').checked;
-  const doWatermark = document.getElementById('watermarkEnabledInput').checked;
-  
-  const sizePx = cmToPx(sizeCm, dpi);
-  
-  let stampImg = null;
-  if (doStamp) {
-    try {
-      stampImg = await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => resolve(img);
-        img.onerror = reject;
-        img.src = STAMP_PATH;
-      });
-    } catch {
-      console.warn('مهر بارگذاری نشد.');
-    }
+  if (currentBlob.size > targetBytes) {
+      currentBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', 0.1));
   }
-  
-  setStatus(`در حال پردازش ۰ از ${readyImages.length}...`);
-  
-  for (let i = 0; i < readyImages.length; i++) {
-    setStatus(`در حال پردازش ${i + 1} از ${readyImages.length}...`);
-    try {
-      const imgObj = readyImages[i];
-      
-      const img = await new Promise((resolve, reject) => {
-        const tempImg = new Image();
-        tempImg.onload = () => resolve(tempImg);
-        tempImg.onerror = reject;
-        tempImg.src = imgObj.previewUrl;
-      });
-      
-      let canvas = resizeToSquare(img, sizePx);
-      canvas = applyBorder(canvas, borderW, borderC, canvasEx);
-      
-      if (stampImg) {
-        canvas = await applyStamp(canvas, stampImg);
-      }
-      
-      if (doWatermark) {
-        canvas = applyScatteredWatermark(canvas, SECRET_CHARS);
-      }
-      
-      const blob = await compressToTargetSize(canvas, targetKB);
-      
-      const customNameInput = document.getElementById(`nameInput_${i}`);
-      const baseName = customNameInput && customNameInput.value.trim() !== "" ? customNameInput.value.trim() : "Image";
-      const finalName = `${baseName}_${getFormattedTimestamp()}.jpg`;
-      
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = finalName;
-      a.click();
-      URL.revokeObjectURL(url);
-      
-    } catch (err) {
-      console.error(err);
-    }
+
+  const pngBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/png'));
+  if (pngBlob.size < currentBlob.size) {
+    return pngBlob;
   }
-  
-  setStatus(`✅ پردازش ${readyImages.length} تصویر کامل شد.`);
+
+  return currentBlob;
 }
 
 document.getElementById('processBtnTop').addEventListener('click', startProcessing);
