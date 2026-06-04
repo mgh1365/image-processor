@@ -20,12 +20,12 @@
     <section class="card file-upload-section">
       <div class="upload-area">
         <input type="file" id="fileInput" accept="image/*" multiple />
-        <p>برای انتخاب کلیک کنید یا فایل‌ها را اینجا بکشید</p>
+        <p>برای انتخاب کلیک کنید یا فایلها را اینجا بکشید</p>
       </div>
       <div id="uploadStatus" class="status-text"></div>
     </section>
 
-    <!-- بخش تنظیمات آکاردئونی (مخفی به صورت پیش‌فرض) -->
+    <!-- بخش تنظیمات آکاردئونی -->
     <details class="card settings-accordion">
       <summary class="accordion-summary">
         <span class="summary-title">⚙️ تنظیمات پردازش (ابعاد، حجم، حاشیه، واترمارک)</span>
@@ -46,7 +46,7 @@
         </section>
 
         <section class="nested-card">
-          <h2>فشرده‌سازی</h2>
+          <h2>فشردهسازی</h2>
           <div class="input-group">
             <label>حجم هدف (KB)</label>
             <input type="number" id="targetSizeInput" value="200" min="10" max="5000" step="10" />
@@ -79,9 +79,9 @@
       </div>
     </details>
 
-    <!-- بخش لیست پیش‌نمایش و نام‌گذاری فایل‌ها -->
+    <!-- لیست پیشنمایش و نامگذاری -->
     <section id="fileListCard" class="card" style="display: none;">
-      <h2>لیست تصاویر و نام‌گذاری</h2>
+      <h2>لیست تصاویر و نامگذاری</h2>
       <div id="fileListContainer"></div>
     </section>
 
@@ -91,18 +91,39 @@
     </div>
   </main>
 
-  <!-- Modal برای کراپ تصاویر نامربعی -->
+  <!-- Modal برای کراپ و ویرایش اولیه -->
   <div id="cropModal" class="modal" style="display: none;">
-    <div class="modal-content">
+    <div class="modal-content-large">
       <div class="modal-header">
-        <h2>تنظیم کادر مربع</h2>
-        <p id="cropModalText">تصویر مربع نیست، لطفاً بخش مورد نظر را تنظیم کنید.</p>
+        <h2 id="cropModalTitle">تنظیمات اولیه تصویر</h2>
+        <p id="cropModalText">کادر مربع را تنظیم کنید و در صورت نیاز، تصویر را ویرایش کنید.</p>
       </div>
-      <div class="crop-container">
-        <img id="cropImage" src="" alt="برای برش" />
+      <div class="editor-body">
+        <div class="crop-container">
+          <img id="cropImage" src="" alt="برای برش" />
+        </div>
+        <div class="editor-controls">
+          <h3>تنظیمات تصویر</h3>
+          <div class="control-group">
+            <label>چرخش: <span id="rotationValue">0</span>°</label>
+            <input type="range" id="rotationSlider" min="-180" max="180" value="0" step="1" />
+          </div>
+          <div class="control-group">
+            <label>روشنایی: <span id="brightnessValue">100</span>%</label>
+            <input type="range" id="brightnessSlider" min="0" max="200" value="100" step="1" />
+          </div>
+          <div class="control-group">
+            <label>کنتراست: <span id="contrastValue">100</span>%</label>
+            <input type="range" id="contrastSlider" min="0" max="200" value="100" step="1" />
+          </div>
+           <div class="control-group">
+            <label>اشباع رنگ: <span id="saturateValue">100</span>%</label>
+            <input type="range" id="saturateSlider" min="0" max="200" value="100" step="1" />
+          </div>
+        </div>
       </div>
       <div class="modal-footer">
-        <button id="confirmCropBtn" class="btn primary-btn">تایید برش</button>
+        <button id="confirmCropBtn" class="btn primary-btn">تایید و ادامه</button>
       </div>
     </div>
   </div>
