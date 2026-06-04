@@ -1,10 +1,9 @@
 /**
  * Image Processing — Web App (GitHub Pages)
+ * مهر: پایین چپ، عرض max 25% عرض تصویر، فاصله 2.5% از گوشه
  */
 
 const STAMP_PATH = 'assets/stamp.png';
-
-// حروفی که قرار است مخفی شوند
 const SECRET_CHARS = ['n', 'o', 'r', 'u', 'z', 'k', 'h', 'a', 'n'];
 
 // ——— helpers ———
@@ -32,6 +31,9 @@ function fileToDataURL(file) {
   });
 }
 
+/**
+ * تغییر اندازه به مربع با حفظ نسبت تصویر (letterbox با پس‌زمینه سفید)
+ */
 function resizeToSquare(img, sizePx) {
   const canvas = document.createElement('canvas');
   canvas.width = sizePx;
@@ -51,8 +53,14 @@ function resizeToSquare(img, sizePx) {
   return canvas;
 }
 
+/**
+ * اعمال حاشیه با border-radius=5 روی تصویر (حاشیه بالای تصویر رسم می‌شه)
+ * + توسعه اختیاری بوم به رنگ سفید
+ */
 function applyBorder(srcCanvas, borderWidth, borderColor, expandCanvas) {
   const expand = expandCanvas ? 2 : 0;
+
+  // اندازه canvas نهایی = تصویر + توسعه سفید اطراف
   const w = srcCanvas.width + expand * 2;
   const h = srcCanvas.height + expand * 2;
 
@@ -61,12 +69,17 @@ function applyBorder(srcCanvas, borderWidth, borderColor, expandCanvas) {
   canvas.height = h;
   const ctx = canvas.getContext('2d');
 
+  // پس‌زمینه سفید (توسعه بوم)
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, w, h);
+
+  // تصویر اصلی
   ctx.drawImage(srcCanvas, expand, expand);
 
+  // رسم حاشیه روی تصویر (نه زیرش)
   if (borderWidth > 0) {
     const r = 5;
+    // موقعیت حاشیه: از لبه داخلی بوم سفید شروع می‌شه
     const bx = expand + borderWidth / 2;
     const by = expand + borderWidth / 2;
     const bw = srcCanvas.width - borderWidth;
@@ -92,6 +105,11 @@ function applyBorder(srcCanvas, borderWidth, borderColor, expandCanvas) {
   return canvas;
 }
 
+/**
+ * اعمال مهر در گوشه پایین چپ
+ * عرض مهر = min(stampNaturalWidth, 25% عرض canvas)
+ * فاصله از گوشه = 2.5% عرض canvas
+ */
 async function applyStamp(canvas, stampImg) {
   const ctx = canvas.getContext('2d');
   const w = canvas.width;
@@ -101,7 +119,7 @@ async function applyStamp(canvas, stampImg) {
   const stampW = Math.min(stampImg.naturalWidth, maxStampW);
   const stampH = Math.round((stampImg.naturalHeight / stampImg.naturalWidth) * stampW);
 
-  const margin = Math.round(w * 0.025);
+  const margin = Math.round(w * 0.025);  // 2.5% به جای 5%
   const sx = margin;
   const sy = h - stampH - margin;
 
@@ -109,8 +127,9 @@ async function applyStamp(canvas, stampImg) {
   return canvas;
 }
 
-// ——— بخش واترمارک مخفی و پراکنده ———
-
+/**
+ * دریافت رنگ میانگین تصویر جهت مخفی‌سازی هرچه بهتر حروف واترمارک
+ */
 function getAverageColor(canvas) {
   const ctx = canvas.getContext('2d');
   const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -126,12 +145,15 @@ function getAverageColor(canvas) {
   return `rgb(${Math.round(r/count)}, ${Math.round(g/count)}, ${Math.round(b/count)})`;
 }
 
+/**
+ * درج حروف مخفی به‌صورت تصادفی و پراکنده در تصویر
+ */
 function applyScatteredWatermark(canvas, textArray) {
   const ctx = canvas.getContext('2d');
   const avgColor = getAverageColor(canvas);
 
   ctx.fillStyle = avgColor;
-  ctx.font = '8px Arial'; // سایز ریز
+  ctx.font = '8px Arial';
   ctx.globalAlpha = 0.8;
 
   textArray.forEach(char => {
@@ -145,8 +167,9 @@ function applyScatteredWatermark(canvas, textArray) {
   return canvas;
 }
 
-// ——— فشرده‌سازی ———
-
+/**
+ * فشرده‌سازی با جستجوی دودویی برای رسیدن به حجم هدف (KB)
+ */
 async function compressToTargetSize(canvas, targetKB) {
   const targetBytes = targetKB * 1024;
 
@@ -216,20 +239,26 @@ document.getElementById('processBtn').addEventListener('click', async () => {
       const dataURL = await fileToDataURL(files[i]);
       const img = await loadImage(dataURL);
 
+      // ۱. تغییر اندازه
       let canvas = resizeToSquare(img, sizePx);
+
+      // ۲. حاشیه (روی تصویر رسم می‌شه)
       canvas = applyBorder(canvas, borderW, borderC, doExpand);
 
+      // ۳. مهر
       if (stampImg) {
         canvas = await applyStamp(canvas, stampImg);
       }
 
-      // اعمال واترمارک حروف در صورت فعال بودن چک‌باکس
+      // ۴. واترمارک مخفی با حروف پراکنده
       if (doWatermark) {
         canvas = applyScatteredWatermark(canvas, SECRET_CHARS);
       }
 
+      // ۵. فشرده‌سازی
       const blob = await compressToTargetSize(canvas, targetKB);
 
+      // ۶. دانلود
       const ext  = blob.type === 'image/jpeg' ? 'jpg' : 'png';
       const name = files[i].name.replace(/\.[^/.]+$/, '') + '_processed.' + ext;
       const url  = URL.createObjectURL(blob);
@@ -241,7 +270,7 @@ document.getElementById('processBtn').addEventListener('click', async () => {
 
     } catch (err) {
       console.error(err);
-      setStatus(`❌ خطا در پردازش فایل ${files[i].name}`);
+      setStatus(`❌ خطا در پردازش فایل ${files[i].name}: ${err.message}`);
     }
   }
 
