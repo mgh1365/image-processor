@@ -1,9 +1,8 @@
 /**
- * Image Processing — Web App (v3.6 - Percentage Font Size & Exact Average Color for Watermark)
+ * Image Processing — Web App (Base Version - No Hidden Text Watermark)
  */
 
 const STAMP_PATH = 'assets/stamp.png';
-const SECRET_CHARS = ['n', 'o', 'r', 'u', 'z', 'k', 'h', 'a', 'n']; // آرایه حروف مخفی
 
 let readyImages = []; 
 let processQueue = [];
@@ -263,10 +262,6 @@ async function startProcessing() {
   const canvasEx = parseInt(document.getElementById('canvasExpandInput').value) || 0;
   const borderC = document.getElementById('borderColorInput').value;
   const doStamp = document.getElementById('stampEnabledInput').checked;
-  const doWatermark = document.getElementById('watermarkEnabledInput') ? document.getElementById('watermarkEnabledInput').checked : false;
-  
-  // درصد سایز واترمارک نسبت به عرض تصویر
-  const watermarkSizePercent = parseFloat(document.getElementById('watermarkFontSizeInput').value) || 5;
 
   const sizePx = cmToPx(sizeCm, dpi);
   const timestampSuffix = getFormattedTimestamp();
@@ -288,11 +283,6 @@ async function startProcessing() {
       let canvas = resizeToSquare(img, sizePx);
       canvas = applyBorder(canvas, borderW, borderC, canvasEx);
       if (stampImg) canvas = await applyStamp(canvas, stampImg);
-      
-      // اعمال واترمارک حروف پراکنده و مخفی بر اساس درصد از عرض
-      if (doWatermark) {
-        canvas = applyScatteredWatermark(canvas, SECRET_CHARS, watermarkSizePercent);
-      }
       
       const blob = await compressToTargetSize(canvas, targetKB);
 
@@ -366,47 +356,6 @@ async function applyStamp(canvas, stampImg) {
   const margin = Math.round(w * 0.025), sx = margin, sy = h - stampH - margin;
   
   ctx.drawImage(stampImg, sx, sy, stampW, stampH);
-  return canvas;
-}
-
-// تابع اعمال حروف پراکنده: استفاده از میانگین رنگ پس‌زمینه بدون تغییر تیرگی، و تعیین سایز بر اساس درصد عرض
-function applyScatteredWatermark(canvas, textArray, sizePercent) {
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width;
-  const h = canvas.height;
-  
-  // 1. محاسبه میانگین رنگ تصویر با یک ترفند سریع (رسم در 1 در 1 پیکسل)
-  const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = 1;
-  tempCanvas.height = 1;
-  const tempCtx = tempCanvas.getContext('2d');
-  tempCtx.drawImage(canvas, 0, 0, 1, 1);
-  const pixelData = tempCtx.getImageData(0, 0, 1, 1).data;
-  
-  // 2. تعیین رنگ واترمارک دقیقاً معادل میانگین رنگ زمینه
-  const r = pixelData[0];
-  const g = pixelData[1];
-  const b = pixelData[2];
-  ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-  
-  // 3. محاسبه سایز فونت بر اساس درصد از عرض تصویر
-  const fontSize = (w * sizePercent) / 100;
-  ctx.font = `${fontSize}px Arial`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  
-  textArray.forEach(char => {
-    // پراکندگی تصادفی در سطح بوم
-    const rx = Math.random() * (w * 0.8) + (w * 0.1);
-    const ry = Math.random() * (h * 0.8) + (h * 0.1);
-    
-    ctx.save();
-    ctx.translate(rx, ry);
-    ctx.rotate((Math.random() - 0.5) * Math.PI / 2); // چرخش تصادفی
-    ctx.fillText(char, 0, 0);
-    ctx.restore();
-  });
-  
   return canvas;
 }
 
