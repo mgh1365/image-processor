@@ -1,5 +1,5 @@
 /**
- * Image Processing — Web App (v3.2 - Critical Fix for Editor Logic)
+ * Image Processing — Web App (v3.3 - All Fixes Applied)
  */
 
 const STAMP_PATH = 'assets/stamp.png';
@@ -33,7 +33,6 @@ const contrastValue = document.getElementById('contrastValue');
 const saturateValue = document.getElementById('saturateValue');
 
 // --- Helpers ---
-
 function cmToPx(cm, dpi) { return Math.round((cm / 2.54) * dpi); }
 
 function loadImage(src) {
@@ -59,7 +58,6 @@ function getFormattedTimestamp() {
   const d = new Date();
   const pad = (n) => n.toString().padStart(2, '0');
   const timeStr = pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
-  
   try {
     const pDate = new Intl.DateTimeFormat('fa-IR', { calendar: 'persian', numberingSystem: 'latn', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
     return `${pDate.replace(/\//g, '')},${timeStr}`;
@@ -68,29 +66,35 @@ function getFormattedTimestamp() {
   }
 }
 
-// --- Editor & Queue Logic ---
+// --- Clear List Logic ---
+function clearList() {
+  readyImages.forEach(item => URL.revokeObjectURL(item.blobUrl));
+  readyImages = [];
+  processQueue = [];
+  fileInput.value = '';
+  fileListContainer.innerHTML = '';
+  fileListCard.style.display = 'none';
+  setUploadStatus('لیست تصاویر پاک شد.');
+  setStatus('');
+}
 
+document.getElementById('clearBtnTop').addEventListener('click', clearList);
+document.getElementById('clearBtnBottom').addEventListener('click', clearList);
+
+// --- Editor & Queue Logic ---
 fileInput.addEventListener('change', async (e) => {
   const files = e.target.files;
   if (!files || files.length === 0) return;
 
-  setUploadStatus('در حال آمادهسازی تصاویر...');
+  setUploadStatus('در حال آماده‌سازی تصاویر...');
   
-  // Clean up previous state
-  readyImages.forEach(item => URL.revokeObjectURL(item.blobUrl));
-  readyImages = [];
-  processQueue = [];
-  currentProcessIndex = 0;
-  fileListContainer.innerHTML = '';
-  fileListCard.style.display = 'none';
-
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     const objectUrl = URL.createObjectURL(file);
     processQueue.push({ originalName: file.name, blobUrl: objectUrl });
   }
   
-  fileInput.value = ''; // Allow re-selecting same files
+  fileInput.value = '';
   startNextInQueue();
 });
 
@@ -106,16 +110,14 @@ function startNextInQueue() {
 
     if (cropperInstance) cropperInstance.destroy();
 
-    // The image must be loaded before Cropper is initialized
     cropImage.onload = () => {
       cropperInstance = new Cropper(cropImage, {
         aspectRatio: 1,
-        viewMode: 1,
+        viewMode: 1, // Ensures crop box stays within canvas, safer for rotation
         dragMode: 'move',
         autoCropArea: 1,
-        background: false, // Make background transparent to see container bg
+        background: false,
         ready: function () {
-          // Apply initial filter values for visual preview
           updateFilterPreview();
         }
       });
@@ -123,6 +125,8 @@ function startNextInQueue() {
   } else {
     cropModal.style.display = 'none';
     renderFileList();
+    processQueue = [];
+    currentProcessIndex = 0;
   }
 }
 
@@ -139,15 +143,13 @@ function resetEditorControls() {
 }
 
 function updateFilterPreview() {
-  if (!cropperInstance || !cropperInstance.cropper) return;
+  // Select Cropper's internal image elements directly for live preview
+  const cropperImages = document.querySelectorAll('.cropper-canvas img, .cropper-view-box img');
+  const filterString = `brightness(${brightnessSlider.value}%) contrast(${contrastSlider.value}%) saturate(${saturateSlider.value}%)`;
   
-  // Cropper.js v1.5.13 uses a child element for the image inside the canvas
-  const cropperImageElement = cropImage.nextElementSibling.querySelector('img');
-  
-  if (cropperImageElement) {
-    const filterString = `brightness(${brightnessSlider.value}%) contrast(${contrastSlider.value}%) saturate(${saturateSlider.value}%)`;
-    cropperImageElement.style.filter = filterString;
-  }
+  cropperImages.forEach(img => {
+    img.style.filter = filterString;
+  });
 }
 
 // Event listeners for editor controls
@@ -171,26 +173,25 @@ saturateSlider.addEventListener('input', (e) => {
   updateFilterPreview();
 });
 
-confirmCropBtn.addEventListener('click', async () => {
+confirmCropBtn.addEventListener('click', () => {
   if (!cropperInstance) return;
 
   const currentItem = processQueue[currentProcessIndex];
   
-  // Use Cropper's built-in getCroppedCanvas which respects rotation
+  // 1. Get perfectly cropped & rotated canvas from Cropper natively
   const croppedCanvas = cropperInstance.getCroppedCanvas({
-    fillColor: '#ffffff'
+    fillColor: '#ffffff',
+    imageSmoothingEnabled: true,
+    imageSmoothingQuality: 'high'
   });
 
-  // Now, draw the filtered image onto this rotated/cropped canvas
+  // 2. Create new canvas to burn in the CSS filters
   const finalCanvas = document.createElement('canvas');
-  const finalCtx = finalCanvas.getContext('2d');
   finalCanvas.width = croppedCanvas.width;
   finalCanvas.height = croppedCanvas.height;
+  const finalCtx = finalCanvas.getContext('2d');
   
-  // Apply the CSS filters to the canvas context
   finalCtx.filter = `brightness(${brightnessSlider.value}%) contrast(${contrastSlider.value}%) saturate(${saturateSlider.value}%)`;
-  
-  // Draw the result from cropper (which is already cropped and rotated)
   finalCtx.drawImage(croppedCanvas, 0, 0);
 
   finalCanvas.toBlob((blob) => {
@@ -207,11 +208,11 @@ confirmCropBtn.addEventListener('click', async () => {
 
 function renderFileList() {
   if (readyImages.length === 0) {
-    setUploadStatus('تصویری آماده نشد.');
+    setUploadStatus('لیست تصاویر خالی است.');
     return;
   }
   
-  setUploadStatus(`تعداد ${readyImages.length} تصویر آماده پردازش است.`);
+  setUploadStatus(`تعداد ${readyImages.length} تصویر در لیست آماده پردازش است.`);
   fileListCard.style.display = 'block';
   fileListContainer.innerHTML = '';
 
@@ -227,7 +228,7 @@ function renderFileList() {
     input.id = `nameInput_${item.id}`;
     
     const baseName = getBaseName(item.originalName);
-    input.placeholder = `نام دلخواه (پیشفرض: ${baseName})`;
+    input.placeholder = `نام دلخواه (پیش‌فرض: ${baseName})`;
 
     row.appendChild(thumb);
     row.appendChild(input);
@@ -236,10 +237,9 @@ function renderFileList() {
 }
 
 // --- Final Processing Logic ---
-
 async function startProcessing() {
   if (!readyImages.length) {
-    setStatus('تصویری برای پردازش وجود ندارد.');
+    setStatus('تصویری در لیست برای پردازش وجود ندارد.');
     return;
   }
 
@@ -302,7 +302,6 @@ function resizeToSquare(img, sizePx) {
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, sizePx, sizePx);
-  // Image from editor is already square, so a simple draw is enough.
   ctx.drawImage(img, 0, 0, sizePx, sizePx);
   return canvas;
 }
@@ -338,18 +337,15 @@ async function compressToTargetSize(canvas, targetKB) {
   let quality = 0.9;
   let currentBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', quality));
 
-  // Iteratively reduce quality
   while (currentBlob.size > targetBytes && quality > 0.1) {
     quality -= 0.1;
     currentBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', quality));
   }
   
-  // If it's still too large, return the lowest quality version
   if (currentBlob.size > targetBytes) {
       currentBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', 0.1));
   }
 
-  // If a PNG version would be smaller, use that
   const pngBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/png'));
   if (pngBlob.size < currentBlob.size) {
     return pngBlob;
