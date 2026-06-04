@@ -1,358 +1,143 @@
-/**
- * Image Processing — Web App (v3.3 - All Fixes Applied)
- */
-
-const STAMP_PATH = 'assets/stamp.png';
-
-let readyImages = []; 
-let processQueue = [];
-let currentProcessIndex = 0;
-let cropperInstance = null;
-let imageCounter = 0;
-
-// DOM Elements
-const fileInput = document.getElementById('fileInput');
-const cropModal = document.getElementById('cropModal');
-const cropImage = document.getElementById('cropImage');
-const confirmCropBtn = document.getElementById('confirmCropBtn');
-const uploadStatus = document.getElementById('uploadStatus');
-const fileListCard = document.getElementById('fileListCard');
-const fileListContainer = document.getElementById('fileListContainer');
-const cropModalTitle = document.getElementById('cropModalTitle');
-
-// Editor controls
-const rotationSlider = document.getElementById('rotationSlider');
-const brightnessSlider = document.getElementById('brightnessSlider');
-const contrastSlider = document.getElementById('contrastSlider');
-const saturateSlider = document.getElementById('saturateSlider');
-
-// Value displays
-const rotationValue = document.getElementById('rotationValue');
-const brightnessValue = document.getElementById('brightnessValue');
-const contrastValue = document.getElementById('contrastValue');
-const saturateValue = document.getElementById('saturateValue');
-
-// --- Helpers ---
-function cmToPx(cm, dpi) { return Math.round((cm / 2.54) * dpi); }
-
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`Load Error for ${src}`));
-    img.src = src;
-  });
+:root {
+  --bg-color: #f0f2f5;
+  --card-bg: #ffffff;
+  --text-main: #1a202c;
+  --text-muted: #718096;
+  --primary-color: #2b6cb0;
+  --primary-hover: #2c5282;
+  --secondary-bg: #edf2f7;
+  --secondary-hover: #e2e8f0;
+  --border-color: #e2e8f0;
+  --radius: 6px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
-function setStatus(msg) { document.getElementById('status').textContent = msg; }
-function setUploadStatus(msg) { uploadStatus.textContent = msg; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-function getBaseName(fileName) {
-  if (!fileName) return `image_${Date.now()}`;
-  const lastDot = fileName.lastIndexOf('.');
-  return lastDot !== -1 ? fileName.substring(0, lastDot) : fileName;
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  font-size: 14px;
+  line-height: 1.4;
+  padding-top: 55px;
 }
 
-function getFormattedTimestamp() {
-  const d = new Date();
-  const pad = (n) => n.toString().padStart(2, '0');
-  const timeStr = pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
-  try {
-    const pDate = new Intl.DateTimeFormat('fa-IR', { calendar: 'persian', numberingSystem: 'latn', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
-    return `${pDate.replace(/\//g, '')},${timeStr}`;
-  } catch (err) {
-    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())},${timeStr}`;
-  }
+/* Header & Top Bar */
+.top-bar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 50px;
+  background-color: var(--card-bg);
+  box-shadow: var(--shadow);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 1.5rem;
+  z-index: 100;
+  border-bottom: 1px solid var(--border-color);
+}
+.top-bar h1 { font-size: 1.1rem; font-weight: 600; }
+.header-actions { display: flex; gap: 0.5rem; }
+
+.container { max-width: 900px; margin: 1rem auto; padding: 0 0.5rem; }
+
+/* Cards */
+.card {
+  background-color: var(--card-bg);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border-color);
+}
+.card > h2 {
+  font-size: 1rem; margin-bottom: 0.75rem; color: var(--primary-color);
+  border-bottom: 1px solid var(--border-color); padding-bottom: 0.25rem;
 }
 
-// --- Clear List Logic ---
-function clearList() {
-  readyImages.forEach(item => URL.revokeObjectURL(item.blobUrl));
-  readyImages = [];
-  processQueue = [];
-  fileInput.value = '';
-  fileListContainer.innerHTML = '';
-  fileListCard.style.display = 'none';
-  setUploadStatus('لیست تصاویر پاک شد.');
-  setStatus('');
+/* File Upload */
+.upload-area {
+  border: 2px dashed #cbd5e0; border-radius: var(--radius);
+  padding: 1.5rem 1rem; text-align: center; position: relative;
+  transition: all 0.2s; background-color: #fafafa;
 }
-
-document.getElementById('clearBtnTop').addEventListener('click', clearList);
-document.getElementById('clearBtnBottom').addEventListener('click', clearList);
-
-// --- Editor & Queue Logic ---
-fileInput.addEventListener('change', async (e) => {
-  const files = e.target.files;
-  if (!files || files.length === 0) return;
-
-  setUploadStatus('در حال آماده‌سازی تصاویر...');
-  
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    const objectUrl = URL.createObjectURL(file);
-    processQueue.push({ originalName: file.name, blobUrl: objectUrl });
-  }
-  
-  fileInput.value = '';
-  startNextInQueue();
-});
-
-function startNextInQueue() {
-  if (currentProcessIndex < processQueue.length) {
-    const currentItem = processQueue[currentProcessIndex];
-    cropModalTitle.textContent = `تنظیمات تصویر (${currentProcessIndex + 1} از ${processQueue.length})`;
-    
-    resetEditorControls();
-    
-    cropImage.src = currentItem.blobUrl;
-    cropModal.style.display = 'flex';
-
-    if (cropperInstance) cropperInstance.destroy();
-
-    cropImage.onload = () => {
-      cropperInstance = new Cropper(cropImage, {
-        aspectRatio: 1,
-        viewMode: 1, // Ensures crop box stays within canvas, safer for rotation
-        dragMode: 'move',
-        autoCropArea: 1,
-        background: false,
-        ready: function () {
-          updateFilterPreview();
-        }
-      });
-    };
-  } else {
-    cropModal.style.display = 'none';
-    renderFileList();
-    processQueue = [];
-    currentProcessIndex = 0;
-  }
+.upload-area:hover { border-color: var(--primary-color); background-color: #ebf8ff; }
+.upload-area input[type="file"] {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  opacity: 0; cursor: pointer;
 }
+.upload-area p { color: var(--text-muted); font-weight: 500; font-size: 0.95rem; }
 
-function resetEditorControls() {
-  rotationSlider.value = 0;
-  brightnessSlider.value = 100;
-  contrastSlider.value = 100;
-  saturateSlider.value = 100;
-  
-  rotationValue.textContent = '0';
-  brightnessValue.textContent = '100';
-  contrastValue.textContent = '100';
-  saturateValue.textContent = '100';
+/* Settings Accordion */
+.settings-accordion { padding: 0; overflow: hidden; }
+.accordion-summary {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 1rem; cursor: pointer; background-color: #f7fafc;
+  font-weight: 600; color: var(--primary-color); list-style: none;
 }
+.accordion-summary::-webkit-details-marker { display: none; }
+.accordion-summary:hover { background-color: #edf2f7; }
+.summary-title { font-size: 0.95rem; }
+.summary-icon { font-size: 0.8rem; transition: transform 0.2s; color: var(--text-muted); }
+details[open] .summary-icon { transform: rotate(180deg); }
+details[open] .accordion-summary { border-bottom: 1px solid var(--border-color); }
 
-function updateFilterPreview() {
-  // Select Cropper's internal image elements directly for live preview
-  const cropperImages = document.querySelectorAll('.cropper-canvas img, .cropper-view-box img');
-  const filterString = `brightness(${brightnessSlider.value}%) contrast(${contrastSlider.value}%) saturate(${saturateSlider.value}%)`;
-  
-  cropperImages.forEach(img => {
-    img.style.filter = filterString;
-  });
+.settings-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.75rem; padding: 1rem; background-color: var(--card-bg);
 }
-
-// Event listeners for editor controls
-rotationSlider.addEventListener('input', (e) => {
-  if (cropperInstance) {
-    cropperInstance.rotateTo(Number(e.target.value));
-    rotationValue.textContent = e.target.value;
-  }
-});
-
-brightnessSlider.addEventListener('input', (e) => {
-  brightnessValue.textContent = e.target.value;
-  updateFilterPreview();
-});
-contrastSlider.addEventListener('input', (e) => {
-  contrastValue.textContent = e.target.value;
-  updateFilterPreview();
-});
-saturateSlider.addEventListener('input', (e) => {
-  saturateValue.textContent = e.target.value;
-  updateFilterPreview();
-});
-
-confirmCropBtn.addEventListener('click', () => {
-  if (!cropperInstance) return;
-
-  const currentItem = processQueue[currentProcessIndex];
-  
-  // 1. Get perfectly cropped & rotated canvas from Cropper natively
-  const croppedCanvas = cropperInstance.getCroppedCanvas({
-    fillColor: '#ffffff',
-    imageSmoothingEnabled: true,
-    imageSmoothingQuality: 'high'
-  });
-
-  // 2. Create new canvas to burn in the CSS filters
-  const finalCanvas = document.createElement('canvas');
-  finalCanvas.width = croppedCanvas.width;
-  finalCanvas.height = croppedCanvas.height;
-  const finalCtx = finalCanvas.getContext('2d');
-  
-  finalCtx.filter = `brightness(${brightnessSlider.value}%) contrast(${contrastSlider.value}%) saturate(${saturateSlider.value}%)`;
-  finalCtx.drawImage(croppedCanvas, 0, 0);
-
-  finalCanvas.toBlob((blob) => {
-    readyImages.push({
-      id: `img_${imageCounter++}`,
-      originalName: currentItem.originalName,
-      blobUrl: URL.createObjectURL(blob)
-    });
-
-    currentProcessIndex++;
-    startNextInQueue();
-  }, 'image/jpeg', 0.95);
-});
-
-function renderFileList() {
-  if (readyImages.length === 0) {
-    setUploadStatus('لیست تصاویر خالی است.');
-    return;
-  }
-  
-  setUploadStatus(`تعداد ${readyImages.length} تصویر در لیست آماده پردازش است.`);
-  fileListCard.style.display = 'block';
-  fileListContainer.innerHTML = '';
-
-  readyImages.forEach(item => {
-    const row = document.createElement('div');
-    row.className = 'file-item';
-
-    const thumb = document.createElement('img');
-    thumb.src = item.blobUrl;
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.id = `nameInput_${item.id}`;
-    
-    const baseName = getBaseName(item.originalName);
-    input.placeholder = `نام دلخواه (پیش‌فرض: ${baseName})`;
-
-    row.appendChild(thumb);
-    row.appendChild(input);
-    fileListContainer.appendChild(row);
-  });
+.nested-card { background-color: #fafafa; border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0.75rem; }
+.nested-card h2 { font-size: 0.95rem; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.25rem; }
+.input-group { margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+input[type="number"], input[type="color"], input[type="text"] {
+  width: 90px; padding: 0.4rem 0.5rem; border: 1px solid var(--border-color);
+  border-radius: 4px; font-family: inherit; font-size: 0.9rem; direction: ltr;
 }
+input[type="color"] { padding: 0.1rem; height: 30px; cursor: pointer; }
+.checkbox-label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.9rem; margin-top: 0.5rem; }
 
-// --- Final Processing Logic ---
-async function startProcessing() {
-  if (!readyImages.length) {
-    setStatus('تصویری در لیست برای پردازش وجود ندارد.');
-    return;
-  }
+/* File List */
+#fileListContainer { display: flex; flex-direction: column; gap: 0.5rem; }
+.file-item { display: flex; align-items: center; gap: 1rem; padding: 0.5rem; background-color: #f7fafc; border: 1px solid var(--border-color); border-radius: var(--radius); }
+.file-item img { width: 50px; height: 50px; object-fit: cover; border-radius: 4px; border: 1px solid #cbd5e0; }
+.file-item input[type="text"] { flex: 1; width: auto; direction: rtl; text-align: right; padding: 0.4rem 0.6rem; }
 
-  const sizeCm = parseFloat(document.getElementById('sizeInput').value) || 15;
-  const dpi = parseInt(document.getElementById('dpiInput').value) || 150;
-  const targetKB = parseFloat(document.getElementById('targetSizeInput').value) || 200;
-  const borderW = parseInt(document.getElementById('borderWidthInput').value) || 0;
-  const canvasEx = parseInt(document.getElementById('canvasExpandInput').value) || 0;
-  const borderC = document.getElementById('borderColorInput').value;
-  const doStamp = document.getElementById('stampEnabledInput').checked;
-
-  const sizePx = cmToPx(sizeCm, dpi);
-  const timestampSuffix = getFormattedTimestamp();
-
-  let stampImg = null;
-  if (doStamp) {
-    try { stampImg = await loadImage(STAMP_PATH); } 
-    catch { setStatus('⚠️ مهر یافت نشد - ادامه بدون مهر'); }
-  }
-
-  setStatus(`در حال پردازش...`);
-
-  for (let i = 0; i < readyImages.length; i++) {
-    const currentItem = readyImages[i];
-    setStatus(`در حال پردازش ${i + 1} از ${readyImages.length}...`);
-
-    try {
-      const img = await loadImage(currentItem.blobUrl);
-      let canvas = resizeToSquare(img, sizePx);
-      canvas = applyBorder(canvas, borderW, borderC, canvasEx);
-      if (stampImg) canvas = await applyStamp(canvas, stampImg);
-      
-      const blob = await compressToTargetSize(canvas, targetKB);
-
-      const inputEl = document.getElementById(`nameInput_${currentItem.id}`);
-      let customName = inputEl && inputEl.value.trim() !== '' ? inputEl.value.trim() : getBaseName(currentItem.originalName);
-      
-      const ext = blob.type === 'image/jpeg' ? 'jpg' : 'png';
-      const finalFileName = `${customName}_${timestampSuffix}.${ext}`;
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = finalFileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error(err);
-      setStatus(`❌ خطا در پردازش: ${err.message}`);
-    }
-  }
-  setStatus(`✅ عملیات کامل شد.`);
+/* Buttons */
+.btn {
+  padding: 0.4rem 1rem; border: none; border-radius: 4px;
+  font-size: 0.95rem; font-weight: 500; cursor: pointer;
+  transition: background 0.2s; font-family: inherit;
 }
+.primary-btn { background-color: var(--primary-color); color: white; }
+.primary-btn:hover { background-color: var(--primary-hover); }
+.secondary-btn { background-color: var(--secondary-bg); color: var(--text-main); border: 1px solid var(--border-color); }
+.secondary-btn:hover { background-color: var(--secondary-hover); }
 
-function resizeToSquare(img, sizePx) {
-  const canvas = document.createElement('canvas');
-  canvas.width = sizePx; canvas.height = sizePx;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, sizePx, sizePx);
-  ctx.drawImage(img, 0, 0, sizePx, sizePx);
-  return canvas;
+.bottom-action-container { text-align: center; margin-top: 1rem; padding-bottom: 2rem; }
+.bottom-action-buttons { display: flex; justify-content: center; gap: 0.5rem; }
+.status-text { margin-top: 0.5rem; color: var(--text-muted); font-size: 0.85rem; }
+
+/* Modal & Editor */
+.modal {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background-color: rgba(0, 0, 0, 0.85); display: flex; justify-content: center; align-items: center; z-index: 999;
 }
-
-function applyBorder(srcCanvas, borderWidth, borderColor, expandValue) {
-  const expand = expandValue > 0 ? expandValue : 0;
-  const w = srcCanvas.width + expand * 2, h = srcCanvas.height + expand * 2;
-  const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
-  canvas.width = w; canvas.height = h;
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, w, h);
-  ctx.drawImage(srcCanvas, expand, expand);
-  if (borderWidth > 0) {
-    const bx = expand, by = expand;
-    ctx.strokeStyle = borderColor; 
-    ctx.lineWidth = borderWidth;
-    ctx.strokeRect(bx + borderWidth / 2, by + borderWidth / 2, srcCanvas.width - borderWidth, srcCanvas.height - borderWidth);
-  }
-  return canvas;
+.modal-content-large {
+  background-color: var(--card-bg); border-radius: var(--radius); width: 95%; max-width: 800px;
+  display: flex; flex-direction: column; overflow: hidden; max-height: 90vh;
 }
+.modal-header { padding: 1rem; border-bottom: 1px solid var(--border-color); }
+.modal-header h2 { margin: 0; font-size: 1.1rem; }
+.modal-header p { color: var(--text-muted); font-size: 0.85rem; margin-top: 0.2rem; }
+.editor-body { display: flex; flex: 1; min-height: 400px; }
+.crop-container { flex: 1; background-color: #e2e8f0; min-width: 0; position: relative; }
+.crop-container img { max-width: 100%; display: block; }
+.editor-controls { width: 240px; padding: 1rem; background-color: #f7fafc; border-right: 1px solid var(--border-color); overflow-y: auto; }
+.editor-controls h3 { font-size: 1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; }
+.control-group { margin-bottom: 1.25rem; }
+.control-group label { display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-muted); }
+input[type="range"] { width: 100%; cursor: pointer; }
+.modal-footer { padding: 1rem; border-top: 1px solid var(--border-color); text-align: left; }
 
-async function applyStamp(canvas, stampImg) {
-  const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
-  const maxStampW = Math.round(w * 0.25), stampW = Math.min(stampImg.naturalWidth, maxStampW);
-  const stampH = Math.round((stampImg.naturalHeight / stampImg.naturalWidth) * stampW);
-  const margin = Math.round(w * 0.025), sx = margin, sy = h - stampH - margin;
-  ctx.drawImage(stampImg, sx, sy, stampW, stampH);
-  return canvas;
-}
-
-async function compressToTargetSize(canvas, targetKB) {
-  const targetBytes = targetKB * 1024;
-  let quality = 0.9;
-  let currentBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', quality));
-
-  while (currentBlob.size > targetBytes && quality > 0.1) {
-    quality -= 0.1;
-    currentBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', quality));
-  }
-  
-  if (currentBlob.size > targetBytes) {
-      currentBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', 0.1));
-  }
-
-  const pngBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/png'));
-  if (pngBlob.size < currentBlob.size) {
-    return pngBlob;
-  }
-
-  return currentBlob;
-}
-
-document.getElementById('processBtnTop').addEventListener('click', startProcessing);
-document.getElementById('processBtnBottom').addEventListener('click', startProcessing);
+.cropper-bg { background-image: none; background-color: #333; }
