@@ -1,27 +1,98 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fa">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>پردازش دسته‌ای تصاویر</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Batch Image Processor</title>
   <style>
     * { box-sizing: border-box; font-family: sans-serif; }
     body { margin: 0; background: #f5f7fb; color: #1a1a1a; }
-    .container { max-width: 1000px; margin: 20px auto; padding: 0 12px; }
-    h1 { margin-bottom: 12px; }
-    .panel { background: #fff; border: 1px solid #dde3ee; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
-    .dropzone { border: 2px dashed #9eb3d1; border-radius: 10px; padding: 26px; text-align: center; color: #4f6484; background: #f8fbff; margin-bottom: 10px; }
-    .dropzone.active { border-color: #2f7cf6; background: #eef5ff; }
-    .row { display: flex; gap: 8px; margin: 8px 0; }
+    .container { max-width: 1020px; margin: 20px auto; padding: 0 12px; }
+    h1 { margin: 0 0 12px; }
+    h2 { margin: 0 0 10px; font-size: 18px; }
+    .panel {
+      background: #fff;
+      border: 1px solid #dde3ee;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    .dropzone {
+      border: 2px dashed #9eb3d1;
+      border-radius: 10px;
+      padding: 26px;
+      text-align: center;
+      color: #4f6484;
+      background: #f8fbff;
+      margin-bottom: 10px;
+      transition: .15s;
+      user-select: none;
+    }
+    .dropzone.active {
+      border-color: #2f7cf6;
+      background: #eef5ff;
+      color: #245ec0;
+    }
+
+    .row { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
+
     label { display: block; margin: 8px 0; font-size: 14px; }
-    input[type="text"], input[type="number"] { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #cdd7e8; }
-    .check { display: flex; align-items: center; gap: 8px; }
-    button { border: 1px solid #cdd7e8; background: #fff; padding: 9px 12px; border-radius: 8px; cursor: pointer; }
-    button.primary { background: #2f7cf6; color: #fff; border-color: #2f7cf6; }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 9px;
+      border-radius: 8px;
+      border: 1px solid #cdd7e8;
+      outline: none;
+      background: #fff;
+    }
+    input[type="text"]:focus, input[type="number"]:focus { border-color: #2f7cf6; }
+
+    .check { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+
+    button {
+      border: 1px solid #cdd7e8;
+      background: #fff;
+      padding: 9px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button:hover { background: #f8fbff; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+
+    button.primary {
+      background: #2f7cf6;
+      color: #fff;
+      border-color: #2f7cf6;
+    }
+    button.primary:hover { background: #266ce0; }
+
     button.secondary { background: #f5f7fb; }
-    #fileList { margin: 8px 0 0; padding-left: 18px; max-height: 180px; overflow: auto; }
-    #log { background: #0d1117; color: #d6e2ff; border-radius: 10px; padding: 10px; min-height: 140px; white-space: pre-wrap; }
+
+    #fileList {
+      margin: 8px 0 0;
+      padding-left: 18px;
+      max-height: 180px;
+      overflow: auto;
+      border: 1px solid #edf1f8;
+      border-radius: 8px;
+      background: #fcfdff;
+    }
+    #fileList li { padding: 4px 8px; font-size: 13px; }
+
+    #log {
+      background: #0d1117;
+      color: #d6e2ff;
+      border-radius: 10px;
+      padding: 10px;
+      min-height: 190px;
+      white-space: pre-wrap;
+      line-height: 1.6;
+      overflow: auto;
+      border: 1px solid #1f2937;
+    }
   </style>
 </head>
 <body>
@@ -29,11 +100,13 @@
     <h1>پردازش دسته‌ای تصاویر</h1>
 
     <section class="panel">
-      <div id="dropZone" class="dropzone">فایل‌ها را اینجا رها کنید</div>
+      <div id="dropZone" class="dropzone">فایل‌ها را اینجا Drag & Drop کنید</div>
+
       <div class="row">
         <button id="btnSelect">Select Files</button>
         <button id="btnClear" class="secondary">Clear List</button>
       </div>
+
       <ul id="fileList"></ul>
     </section>
 
@@ -51,7 +124,7 @@
       </label>
 
       <div class="row">
-        <input id="stampPath" type="text" placeholder="assets/stamp.png" />
+        <input id="stampPath" type="text" placeholder="مسیر stamp.png (یا از دکمه انتخاب کن)" />
         <button id="btnStamp" class="secondary">Choose Stamp</button>
       </div>
 
@@ -65,6 +138,7 @@
           حجم هدف (KB)
           <input id="targetKB" type="number" min="1" max="10000" step="0.1" value="350" />
         </label>
+
         <label>
           عرض هدف (cm)
           <input id="targetWidthCm" type="number" min="1" step="0.1" value="15" />
@@ -88,6 +162,7 @@
   </div>
 
   <script>
+    // نیازمند Electron renderer با nodeIntegration: true
     const { ipcRenderer } = require('electron');
 
     const dropZone = document.getElementById('dropZone');
@@ -109,14 +184,14 @@
     let files = [];
 
     function log(msg) {
-      logEl.textContent += msg + '\\n';
+      logEl.textContent += msg + "\\n";
       logEl.scrollTop = logEl.scrollHeight;
     }
 
     function renderFiles() {
-      fileListEl.innerHTML = '';
+      fileListEl.innerHTML = "";
       files.forEach((p) => {
-        const li = document.createElement('li');
+        const li = document.createElement("li");
         li.textContent = p;
         fileListEl.appendChild(li);
       });
@@ -125,97 +200,121 @@
     function addFiles(paths) {
       const set = new Set(files);
       (paths || []).forEach((p) => {
-        if (p && typeof p === 'string') set.add(p.trim());
+        if (p && typeof p === "string") set.add(p.trim());
       });
       files = [...set].filter(Boolean);
       renderFiles();
     }
 
-    ['dragenter', 'dragover'].forEach((ev) => {
+    // Drag & Drop
+    ["dragenter", "dragover"].forEach((ev) => {
       dropZone.addEventListener(ev, (e) => {
         e.preventDefault();
         e.stopPropagation();
-        dropZone.classList.add('active');
+        dropZone.classList.add("active");
       });
     });
 
-    ['dragleave', 'drop'].forEach((ev) => {
+    ["dragleave", "drop"].forEach((ev) => {
       dropZone.addEventListener(ev, (e) => {
         e.preventDefault();
         e.stopPropagation();
-        dropZone.classList.remove('active');
+        dropZone.classList.remove("active");
       });
     });
 
-    dropZone.addEventListener('drop', (e) => {
+    dropZone.addEventListener("drop", (e) => {
       const arr = [];
       for (const f of e.dataTransfer.files) {
         if (f.path) arr.push(f.path);
       }
       addFiles(arr);
-      log(`+ ${arr.length} فایل اضافه شد (Drag & Drop).`);
+      log("+ " + arr.length + " فایل اضافه شد (Drag & Drop).");
     });
 
-    btnSelect.addEventListener('click', async () => {
-      const selected = await ipcRenderer.invoke('select-files');
-      addFiles(selected);
-      log(`+ ${(selected || []).length} فایل اضافه شد (Select).`);
+    // Select files button
+    btnSelect.addEventListener("click", async () => {
+      try {
+        const selected = await ipcRenderer.invoke("select-files");
+        addFiles(selected);
+        log("+ " + (selected || []).length + " فایل اضافه شد (Select).");
+      } catch (err) {
+        log("خطا در انتخاب فایل: " + (err.message || err));
+      }
     });
 
-    btnClear.addEventListener('click', () => {
+    // Clear list
+    btnClear.addEventListener("click", () => {
       files = [];
       renderFiles();
-      log('لیست فایل‌ها پاک شد.');
+      log("لیست فایل‌ها پاک شد.");
     });
 
-    btnStamp.addEventListener('click', async () => {
-      const p = await ipcRenderer.invoke('pick-stamp');
-      if (p) stampPathEl.value = p;
+    // Pick stamp
+    btnStamp.addEventListener("click", async () => {
+      try {
+        const p = await ipcRenderer.invoke("pick-stamp");
+        if (p) {
+          stampPathEl.value = p;
+          log("مهر انتخاب شد: " + p);
+        }
+      } catch (err) {
+        log("خطا در انتخاب مهر: " + (err.message || err));
+      }
     });
 
-    btnRun.addEventListener('click', async () => {
+    // Run processing
+    btnRun.addEventListener("click", async () => {
       if (!files.length) {
-        log('هیچ فایلی انتخاب نشده.');
+        log("هیچ فایلی انتخاب نشده.");
         return;
       }
 
+      const payload = {
+        filePaths: files,
+        enableBorder: enableBorderEl.checked,
+        enableStamp: enableStampEl.checked,
+        enableCompress: enableCompressEl.checked,
+        targetKB: Number(targetKBEl.value || 350),
+        targetWidthCm: Number(targetWidthCmEl.value || 15),
+        openOutputs: openOutputsEl.checked,
+        stampPath: (stampPathEl.value || "").trim()
+      };
+
       btnRun.disabled = true;
-      log('شروع پردازش...');
+      log("شروع پردازش...");
 
       try {
-        const payload = {
-          filePaths: files,
-          enableBorder: enableBorderEl.checked,
-          enableStamp: enableStampEl.checked,
-          enableCompress: enableCompressEl.checked,
-          targetKB: Number(targetKBEl.value || 350),
-          targetWidthCm: Number(targetWidthCmEl.value || 15),
-          openOutputs: openOutputsEl.checked,
-          stampPath: stampPathEl.value.trim()
-        };
-
-        const out = await ipcRenderer.invoke('process-images', payload);
+        const out = await ipcRenderer.invoke("process-images", payload);
 
         let ok = 0, fail = 0;
-        out.forEach((r) => {
+        for (const r of out) {
           if (r.ok) {
             ok++;
-            log(`✓ ${r.output}`);
+            log("✓ " + r.output + " | size=" + Number(r.sizeKB || 0).toFixed(1) + "KB | q=" + r.quality + (r.scaleApplied ? (" | scale=" + r.scaleApplied) : ""));
           } else {
             fail++;
-            log(`✗ ${r.input} -> ${r.error}`);
+            log("✗ " + r.input + " -> " + r.error);
           }
-        });
+        }
 
-        log(`اتمام. موفق: ${ok} | ناموفق: ${fail}`);
-        alert(`اتمام پردازش\\nموفق: ${ok}\\nناموفق: ${fail}`);
-      } catch (e) {
-        log(`خطا: ${e.message || e}`);
-        alert(`خطا: ${e.message || e}`);
+        log("اتمام. موفق: " + ok + " | ناموفق: " + fail);
+        alert("اتمام پردازش\\nموفق: " + ok + "\\nناموفق: " + fail);
+      } catch (err) {
+        log("خطای پردازش: " + (err.message || err));
+        alert("خطا: " + (err.message || err));
       } finally {
         btnRun.disabled = false;
       }
     });
+
+    // startup check
+    try {
+      if (!ipcRenderer) throw new Error("ipcRenderer unavailable");
+      log("Renderer آماده است.");
+    } catch (e) {
+      log("خطا: این صفحه باید داخل Electron اجرا شود. " + e.message);
+    }
   </script>
 </body>
 </html>
