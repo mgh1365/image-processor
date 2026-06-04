@@ -1,154 +1,172 @@
-const { ipcRenderer } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const sharp = require('sharp');
 
-const dropZone = document.getElementById('dropZone');
-const btnSelect = document.getElementById('btnSelect');
-const btnClear = document.getElementById('btnClear');
-const fileListEl = document.getElementById('fileList');
-
-const enableBorderEl = document.getElementById('enableBorder');
-const enableStampEl = document.getElementById('enableStamp');
-const enableCompressEl = document.getElementById('enableCompress');
-const targetKBEl = document.getElementById('targetKB');
-const targetWidthCmEl = document.getElementById('targetWidthCm');
-const openOutputsEl = document.getElementById('openOutputs');
-const stampPathEl = document.getElementById('stampPath');
-const btnStamp = document.getElementById('btnStamp');
-const btnRun = document.getElementById('btnRun');
-const logEl = document.getElementById('log');
-
-let files = [];
-
-function log(msg) {
-  logEl.textContent += msg + '\n';
-  logEl.scrollTop = logEl.scrollHeight;
-}
-
-function renderFiles() {
-  fileListEl.innerHTML = '';
-  for (const p of files) {
-    const li = document.createElement('li');
-    li.textContent = p;
-    fileListEl.appendChild(li);
-  }
-}
-
-function addFiles(paths) {
-  const set = new Set(files);
-  for (const p of (paths || [])) {
-    if (p && typeof p === 'string') set.add(p.trim());
-  }
-  files = [...set].filter(Boolean);
-  renderFiles();
-}
-
-// Drag & Drop
-['dragenter', 'dragover'].forEach((ev) => {
-  dropZone.addEventListener(ev, (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dropZone.classList.add('active');
-  });
-});
-
-['dragleave', 'drop'].forEach((ev) => {
-  dropZone.addEventListener(ev, (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dropZone.classList.remove('active');
-  });
-});
-
-dropZone.addEventListener('drop', (e) => {
-  const arr = [];
-  for (const f of e.dataTransfer.files) {
-    if (f.path) arr.push(f.path);
-  }
-  addFiles(arr);
-  log(`+ ${arr.length} فایل اضافه شد (Drag & Drop).`);
-});
-
-// Select files
-btnSelect.addEventListener('click', async () => {
-  try {
-    const selected = await ipcRenderer.invoke('select-files');
-    addFiles(selected);
-    log(`+ ${(selected || []).length} فایل اضافه شد (Select).`);
-  } catch (err) {
-    log('خطا در انتخاب فایل: ' + (err.message || err));
-  }
-});
-
-// Clear
-btnClear.addEventListener('click', () => {
-  files = [];
-  renderFiles();
-  log('لیست فایل‌ها پاک شد.');
-});
-
-// Choose stamp
-btnStamp.addEventListener('click', async () => {
-  try {
-    const p = await ipcRenderer.invoke('pick-stamp');
-    if (p) {
-      stampPathEl.value = p;
-      log('مهر انتخاب شد: ' + p);
+// ─── Window ───────────────────────────────────────────────────────────────────
+function createWindow() {
+  const win = new BrowserWindow({
+    width: 1100,
+    height: 860,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
     }
-  } catch (err) {
-    log('خطا در انتخاب مهر: ' + (err.message || err));
-  }
+  });
+  win.loadFile(path.join(__dirname, 'index.html'));
+}
+
+app.whenReady().then(createWindow);
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
 });
 
-// Run
-btnRun.addEventListener('click', async () => {
-  if (!files.length) {
-    log('هیچ فایلی انتخاب نشده.');
-    return;
-  }
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
 
-  const payload = {
-    filePaths: files,
-    enableBorder: enableBorderEl.checked,
-    enableStamp: enableStampEl.checked,
-    enableCompress: enableCompressEl.checked,
-    targetKB: Number(targetKBEl.value || 350),
-    targetWidthCm: Number(targetWidthCmEl.value || 15),
-    openOutputs: openOutputsEl.checked,
-    stampPath: (stampPathEl.value || '').trim()
-  };
+// ─── IPC: select files ────────────────────────────────────────────────────────
+ipcMain.handle('select-files', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    properties: ['openFile', 'multiSelections'],
+    filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'tiff'] }]
+  });
+  return canceled ? [] : filePaths;
+});
 
-  btnRun.disabled = true;
-  log('شروع پردازش...');
+// ─── IPC: pick stamp ──────────────────────────────────────────────────────────
+ipcMain.handle('pick-stamp', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+  });
+  return canceled ? null : filePaths[0];
+});
 
-  try {
-    const out = await ipcRenderer.invoke('process-images', payload);
+// ─── IPC: process images ──────────────────────────────────────────────────────
+ipcMain.handle('process-images', async (_event, payload) => {
+  const {
+    filePaths,
+    enableBorder,
+    enableStamp,
+    enableCompress,
+    targetKB,
+    targetWidthCm,
+    openOutputs,
+    stampPath
+  } = payload;
 
-    let ok = 0;
-    let fail = 0;
+  const results = [];
+  const DPI = 96;
+  const targetWidthPx = Math.round((targetWidthCm / 2.54) * DPI);
 
-    for (const r of out) {
-      if (r.ok) {
-        ok++;
-        log(`✓ ${r.output} | size=${Number(r.sizeKB || 0).toFixed(1)}KB | q=${r.quality}${r.scaleApplied ? ` | scale=${r.scaleApplied}` : ''}`);
-      } else {
-        fail++;
-        log(`✗ ${r.input} -> ${r.error}`);
+  for (const inputPath of filePaths) {
+    try {
+      const dir = path.dirname(inputPath);
+      const ext = path.extname(inputPath).toLowerCase();
+      const base = path.basename(inputPath, ext);
+      const outputPath = path.join(dir, `${base}_processed.jpg`);
+
+      let img = sharp(inputPath);
+      const meta = await img.metadata();
+
+      // 1. Resize to target width if needed
+      let scaleApplied = null;
+      if (meta.width && meta.width !== targetWidthPx) {
+        img = img.resize({ width: targetWidthPx, withoutEnlargement: false });
+        scaleApplied = `${meta.width}→${targetWidthPx}px`;
       }
+
+      // 2. Add border (white canvas 5px + black border 2px + rounded concept via padding)
+      if (enableBorder) {
+        img = img.flatten({ background: { r: 255, g: 255, b: 255 } });
+
+        // Convert to buffer to get actual size after resize
+        const buf = await img.toBuffer();
+        const resized = sharp(buf);
+        const rm = await resized.metadata();
+        const w = rm.width;
+        const h = rm.height;
+
+        const canvas = 5;   // white canvas px each side
+        const border = 2;   // black border px each side
+        const total = canvas + border;
+
+        img = sharp(buf)
+          .extend({
+            top: canvas, bottom: canvas, left: canvas, right: canvas,
+            background: { r: 255, g: 255, b: 255 }
+          });
+
+        const buf2 = await img.toBuffer();
+        img = sharp(buf2).extend({
+          top: border, bottom: border, left: border, right: border,
+          background: { r: 0, g: 0, b: 0 }
+        });
+      }
+
+      // 3. Add stamp
+      if (enableStamp && stampPath && fs.existsSync(stampPath)) {
+        const buf3 = await img.toBuffer();
+        const baseMeta = await sharp(buf3).metadata();
+        const stampW = Math.round(baseMeta.width * 0.25);
+
+        const stampBuf = await sharp(stampPath)
+          .resize({ width: stampW })
+          .toBuffer();
+
+        img = sharp(buf3).composite([{
+          input: stampBuf,
+          gravity: 'southeast'
+        }]);
+      }
+
+      // 4. Compress to target KB
+      let quality = 90;
+      let finalBuf;
+      let sizeKB;
+
+      if (enableCompress) {
+        const targetBytes = targetKB * 1024;
+        const rawBuf = await img.jpeg({ quality }).toBuffer();
+
+        if (rawBuf.length <= targetBytes) {
+          finalBuf = rawBuf;
+          sizeKB = rawBuf.length / 1024;
+        } else {
+          // Binary search for quality
+          let lo = 10, hi = quality;
+          finalBuf = rawBuf;
+          sizeKB = rawBuf.length / 1024;
+
+          while (lo <= hi) {
+            const mid = Math.floor((lo + hi) / 2);
+            const testBuf = await sharp(rawBuf).jpeg({ quality: mid }).toBuffer();
+            if (testBuf.length <= targetBytes) {
+              finalBuf = testBuf;
+              sizeKB = testBuf.length / 1024;
+              quality = mid;
+              lo = mid + 1;
+            } else {
+              hi = mid - 1;
+            }
+          }
+        }
+      } else {
+        finalBuf = await img.jpeg({ quality }).toBuffer();
+        sizeKB = finalBuf.length / 1024;
+      }
+
+      fs.writeFileSync(outputPath, finalBuf);
+
+      if (openOutputs) shell.openPath(outputPath);
+
+      results.push({ ok: true, input: inputPath, output: outputPath, sizeKB, quality, scaleApplied });
+    } catch (err) {
+      results.push({ ok: false, input: inputPath, error: err.message });
     }
-
-    log(`اتمام. موفق: ${ok} | ناموفق: ${fail}`);
-    alert(`اتمام پردازش\nموفق: ${ok}\nناموفق: ${fail}`);
-  } catch (err) {
-    log('خطای پردازش: ' + (err.message || err));
-    alert('خطا: ' + (err.message || err));
-  } finally {
-    btnRun.disabled = false;
   }
-});
 
-// Startup check
-try {
-  if (!ipcRenderer) throw new Error('ipcRenderer unavailable');
-  log('Renderer آماده است.');
-} catch (e) {
-  log('خطا: این صفحه باید داخل Electron اجرا شود. ' + e.message);
-}
+  return results;
+});
