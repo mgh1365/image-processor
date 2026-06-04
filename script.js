@@ -1,337 +1,169 @@
-const dropZone = document.getElementById("dropZone");
-const fileInput = document.getElementById("fileInput");
-const selectBtn = document.getElementById("selectBtn");
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const sharp = require('sharp');
 
-const clearBtn = document.getElementById("clearBtn");
-const runBtn = document.getElementById("runBtn");
+let win;
 
-const fileListDiv = document.getElementById("fileList");
-
-let filesStore = [];
-
-selectBtn.addEventListener("click", () => {
-    fileInput.click();
-});
-
-fileInput.addEventListener("change", (e) => {
-    addFiles(e.target.files);
-    fileInput.value = "";
-});
-
-dropZone.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    dropZone.classList.add("dragover");
-});
-
-dropZone.addEventListener("dragleave", () => {
-    dropZone.classList.remove("dragover");
-});
-
-dropZone.addEventListener("drop", (e) => {
-    e.preventDefault();
-    dropZone.classList.remove("dragover");
-    addFiles(e.dataTransfer.files);
-});
-
-function addFiles(fileList) {
-    Array.from(fileList).forEach(file => {
-        filesStore.push(file);
-    });
-
-    renderFiles();
-}
-
-function renderFiles() {
-
-    fileListDiv.innerHTML = "";
-
-    filesStore.forEach((file, index) => {
-
-        const row = document.createElement("div");
-
-        row.className = "file-row";
-
-        row.innerHTML = `
-            <div class="file-name">
-                ${index + 1} - ${file.name}
-            </div>
-
-            <div class="file-size">
-                ${(file.size / 1024).toFixed(2)} KB
-            </div>
-        `;
-
-        fileListDiv.appendChild(row);
-    });
-}
-
-clearBtn.addEventListener("click", () => {
-
-    filesStore = [];
-    renderFiles();
-
-});
-
-runBtn.addEventListener("click", async () => {
-
-    if (!filesStore.length) {
-
-        alert("هیچ فایلی انتخاب نشده");
-        return;
+function createWindow() {
+  win = new BrowserWindow({
+    width: 1150,
+    height: 760,
+    webPreferences: {
+      contextIsolation: false,
+      nodeIntegration: true
     }
+  });
 
-    runBtn.disabled = true;
-    runBtn.innerText = "در حال پردازش...";
+  win.loadFile('index.html');
+}
 
+app.whenReady().then(createWindow);
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
+
+ipcMain.handle('select-files', async () => {
+  const res = await dialog.showOpenDialog(win, {
+    properties: ['openFile', 'multiSelections'],
+    filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'tiff', 'bmp'] }]
+  });
+  return res.canceled ? [] : res.filePaths;
+});
+
+ipcMain.handle('pick-stamp', async () => {
+  const res = await dialog.showOpenDialog(win, {
+    properties: ['openFile'],
+    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+  });
+  if (res.canceled || !res.filePaths?.length) return '';
+  return res.filePaths[0];
+});
+
+ipcMain.handle('process-images', async (_, payload) => {
+  const {
+    filePaths,
+    enableBorder,
+    enableStamp,
+    enableCompress,
+    targetKB,
+    targetWidthCm,
+    openOutputs,
+    stampPath
+  } = payload;
+
+  if (!filePaths || !filePaths.length) throw new Error('No input files selected.');
+
+  const fallbackStamp = path.join(__dirname, 'assets', 'stamp.png');
+  const finalStampPath = (stampPath && fs.existsSync(stampPath)) ? stampPath : fallbackStamp;
+  if (enableStamp && !fs.existsSync(finalStampPath)) {
+    throw new Error('Stamp file not found. Set stamp path or put assets/stamp.png');
+  }
+
+  const results = [];
+  const openList = [];
+
+  for (const inputPath of filePaths) {
     try {
+      const inputDir = path.dirname(inputPath);
+      const ext = path.extname(inputPath);
+      const base = path.basename(inputPath, ext);
 
-        const stamp = await loadImage("assets/stamp.png");
+      let pipeline = sharp(inputPath, { failOn: 'none' }).rotate();
+      const meta = await pipeline.metadata();
+      if (!meta.width || !meta.height) throw new Error('Cannot read image dimensions.');
 
-        for (const file of filesStore) {
+      const dpi = (meta.density && Number.isFinite(meta.density) && meta.density > 0) ? meta.density : 300;
+      const targetWidthPx = Math.round((Number(targetWidthCm || 15) / 2.54) * dpi);
 
-            await processImage(file, stamp);
+      if (meta.width > targetWidthPx) {
+        pipeline = pipeline.resize({ width: targetWidthPx, withoutEnlargement: true });
+      }
 
+      if (enableBorder) {
+        const m = await pipeline.metadata();
+        const w = m.width, h = m.height;
+
+        const roundedMask = Buffer.from(`
+<svg width="${w}" height="${h}">
+  <rect x="0" y="0" width="${w}" height="${h}" rx="5" ry="5" fill="white"/>
+</svg>`);
+
+        pipeline = pipeline
+          .composite([{ input: roundedMask, blend: 'dest-in' }])
+          .extend({
+            top: 2, bottom: 2, left: 2, right: 2,
+            background: { r: 0, g: 0, b: 0, alpha: 1 }
+          })
+          .extend({
+            top: 5, bottom: 5, left: 5, right: 5,
+            background: { r: 255, g: 255, b: 255, alpha: 1 }
+          });
+      }
+
+      if (enableStamp) {
+        const m = await pipeline.metadata();
+        const fw = m.width, fh = m.height;
+        const stampW = Math.round(fw * 0.25);
+        const margin = Math.round(fw * 0.10);
+
+        const stampBuf = await sharp(finalStampPath)
+          .resize({ width: stampW, withoutEnlargement: false })
+          .png()
+          .toBuffer();
+
+        const sm = await sharp(stampBuf).metadata();
+        const sh = sm.height || 0;
+
+        const left = Math.max(0, margin);
+        const top = Math.max(0, fh - sh - margin);
+
+        pipeline = pipeline.composite([{ input: stampBuf, left, top }]);
+      }
+
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const HH = String(now.getHours()).padStart(2, '0');
+      const MM = String(now.getMinutes()).padStart(2, '0');
+      const outputPath = path.join(inputDir, `${base}_${yyyy}${mm}${dd} , ${HH}${MM}.jpg`);
+
+      if (enableCompress) {
+        const targetBytes = Math.max(1, Number(targetKB || 1)) * 1024;
+
+        let low = 1, high = 100, best = null;
+        for (let i = 0; i < 8; i++) {
+          const q = Math.floor((low + high) / 2);
+          const buf = await pipeline.clone().jpeg({ quality: q, mozjpeg: true }).toBuffer();
+          if (buf.length <= targetBytes) {
+            best = buf;
+            low = q + 1;
+          } else {
+            high = q - 1;
+          }
         }
+        if (!best) best = await pipeline.clone().jpeg({ quality: 1, mozjpeg: true }).toBuffer();
+        fs.writeFileSync(outputPath, best);
+      } else {
+        await pipeline.jpeg({ quality: 95, mozjpeg: true }).toFile(outputPath);
+      }
 
-        alert("پردازش تمام شد");
-
+      results.push({ input: inputPath, output: outputPath, ok: true });
+      if (openOutputs) openList.push(outputPath);
     } catch (err) {
-
-        console.error(err);
-
-        alert("خطا در پردازش");
-
+      results.push({ input: inputPath, ok: false, error: err.message || String(err) });
     }
+  }
 
-    runBtn.disabled = false;
-    runBtn.innerText = "اجرا";
+  if (openOutputs) {
+    for (const p of openList) await shell.openPath(p);
+  }
 
+  return results;
 });
-
-function loadImage(src) {
-
-    return new Promise((resolve, reject) => {
-
-        const img = new Image();
-
-        img.onload = () => resolve(img);
-
-        img.onerror = reject;
-
-        img.src = src;
-
-    });
-
-}
-
-function fileToImage(file) {
-
-    return new Promise((resolve, reject) => {
-
-        const img = new Image();
-
-        img.onload = () => resolve(img);
-
-        img.onerror = reject;
-
-        img.src = URL.createObjectURL(file);
-
-    });
-
-}
-
-async function processImage(file, stampImg) {
-
-    const img = await fileToImage(file);
-
-    const canvas = document.createElement("canvas");
-
-    const ctx = canvas.getContext("2d");
-
-    const margin = 5;
-
-    canvas.width = img.width + margin * 2;
-    canvas.height = img.height + margin * 2;
-
-    ctx.fillStyle = "white";
-    ctx.fillRect(
-        0,
-        0,
-        canvas.width,
-        canvas.height
-    );
-
-    ctx.drawImage(
-        img,
-        margin,
-        margin
-    );
-
-    drawRoundedBorder(
-        ctx,
-        margin,
-        margin,
-        img.width,
-        img.height,
-        5,
-        2
-    );
-
-    const stampWidth =
-        img.width * 0.25;
-
-    const stampHeight =
-        stampWidth *
-        (stampImg.height / stampImg.width);
-
-    const offset =
-        img.width * 0.10;
-
-    const stampX =
-        margin + offset;
-
-    const stampY =
-        margin +
-        img.height -
-        offset -
-        stampHeight;
-
-    ctx.drawImage(
-        stampImg,
-        stampX,
-        stampY,
-        stampWidth,
-        stampHeight
-    );
-
-    const jpgData =
-        canvas.toDataURL(
-            "image/jpeg",
-            0.95
-        );
-
-    downloadFile(
-        jpgData,
-        createOutputName(file.name)
-    );
-}
-
-function drawRoundedBorder(
-    ctx,
-    x,
-    y,
-    width,
-    height,
-    radius,
-    borderWidth
-) {
-
-    ctx.beginPath();
-
-    ctx.moveTo(x + radius, y);
-
-    ctx.lineTo(
-        x + width - radius,
-        y
-    );
-
-    ctx.quadraticCurveTo(
-        x + width,
-        y,
-        x + width,
-        y + radius
-    );
-
-    ctx.lineTo(
-        x + width,
-        y + height - radius
-    );
-
-    ctx.quadraticCurveTo(
-        x + width,
-        y + height,
-        x + width - radius,
-        y + height
-    );
-
-    ctx.lineTo(
-        x + radius,
-        y + height
-    );
-
-    ctx.quadraticCurveTo(
-        x,
-        y + height,
-        x,
-        y + height - radius
-    );
-
-    ctx.lineTo(
-        x,
-        y + radius
-    );
-
-    ctx.quadraticCurveTo(
-        x,
-        y,
-        x + radius,
-        y
-    );
-
-    ctx.closePath();
-
-    ctx.lineWidth = borderWidth;
-
-    ctx.strokeStyle = "black";
-
-    ctx.stroke();
-}
-
-function createOutputName(original) {
-
-    const d = new Date();
-
-    const stamp =
-        d.getFullYear() +
-        "-" +
-        String(
-            d.getMonth() + 1
-        ).padStart(2, "0") +
-        "-" +
-        String(
-            d.getDate()
-        ).padStart(2, "0") +
-        "_" +
-        String(
-            d.getHours()
-        ).padStart(2, "0") +
-        "-" +
-        String(
-            d.getMinutes()
-        ).padStart(2, "0");
-
-    const base =
-        original.replace(
-            /\.[^/.]+$/,
-            ""
-        );
-
-    return `${base}_${stamp}.jpg`;
-}
-
-function downloadFile(dataUrl, filename) {
-
-    const a =
-        document.createElement("a");
-
-    a.href = dataUrl;
-
-    a.download = filename;
-
-    document.body.appendChild(a);
-
-    a.click();
-
-    document.body.removeChild(a);
-
-}
