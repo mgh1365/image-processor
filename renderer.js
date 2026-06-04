@@ -53,11 +53,11 @@ function resizeToSquare(img, sizePx) {
 }
 
 /**
- * اعمال حاشیه با border-radius=5 روی تصویر (حاشیه بالای تصویر رسم می‌شه)
- * + توسعه اختیاری بوم به رنگ سفید
+ * اعمال حاشیه با border-radius=5 روی تصویر
+ * + توسعه اختیاری بوم به رنگ سفید (مقدار دلخواه)
  */
-function applyBorder(srcCanvas, borderWidth, borderColor, expandCanvas) {
-  const expand = expandCanvas ? 2 : 0;
+function applyBorder(srcCanvas, borderWidth, borderColor, expandValue) {
+  const expand = expandValue > 0 ? expandValue : 0;
 
   // اندازه canvas نهایی = تصویر + توسعه سفید اطراف
   const w = srcCanvas.width + expand * 2;
@@ -75,12 +75,12 @@ function applyBorder(srcCanvas, borderWidth, borderColor, expandCanvas) {
   // تصویر اصلی
   ctx.drawImage(srcCanvas, expand, expand);
 
-  // رسم حاشیه روی تصویر (نه زیرش)
+  // رسم حاشیه روی تصویر
   if (borderWidth > 0) {
     const r = 5;
-    // موقعیت حاشیه: از لبه داخلی بوم سفید شروع می‌شه
-    const bx = expand + borderWidth / 2;
-    const by = expand + borderWidth / 2;
+    // محاسبه دقیق موقعیت برای جلوگیری از برش خوردن گوشه‌ها (شیفت به اندازه نصف ضخامت)
+    const bx = expand + (borderWidth / 2);
+    const by = expand + (borderWidth / 2);
     const bw = srcCanvas.width - borderWidth;
     const bh = srcCanvas.height - borderWidth;
 
@@ -96,6 +96,8 @@ function applyBorder(srcCanvas, borderWidth, borderColor, expandCanvas) {
     ctx.quadraticCurveTo(bx, by, bx + r, by);
     ctx.closePath();
 
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
     ctx.strokeStyle = borderColor;
     ctx.lineWidth = borderWidth;
     ctx.stroke();
@@ -118,7 +120,7 @@ async function applyStamp(canvas, stampImg) {
   const stampW = Math.min(stampImg.naturalWidth, maxStampW);
   const stampH = Math.round((stampImg.naturalHeight / stampImg.naturalWidth) * stampW);
 
-  const margin = Math.round(w * 0.025);  // 2.5% به جای 5%
+  const margin = Math.round(w * 0.025);  // 2.5% 
   const sx = margin;
   const sy = h - stampH - margin;
 
@@ -169,13 +171,13 @@ document.getElementById('processBtn').addEventListener('click', async () => {
     return;
   }
 
-  const sizeCm   = parseFloat(document.getElementById('sizeInput').value) || 15;
-  const dpi      = parseInt(document.getElementById('dpiInput').value) || 96;
-  const targetKB = parseFloat(document.getElementById('targetSizeInput').value) || 200;
-  const borderW  = parseInt(document.getElementById('borderWidthInput').value) || 0;
-  const borderC  = document.getElementById('borderColorInput').value;
-  const doExpand = document.getElementById('canvasExpandInput').checked;
-  const doStamp  = document.getElementById('stampEnabledInput').checked;
+  const sizeCm      = parseFloat(document.getElementById('sizeInput').value) || 15;
+  const dpi         = parseInt(document.getElementById('dpiInput').value) || 96;
+  const targetKB    = parseFloat(document.getElementById('targetSizeInput').value) || 200;
+  const borderW     = parseInt(document.getElementById('borderWidthInput').value) || 0;
+  const canvasEx    = parseInt(document.getElementById('canvasExpandInput').value) || 0;
+  const borderC     = document.getElementById('borderColorInput').value;
+  const doStamp     = document.getElementById('stampEnabledInput').checked;
 
   const sizePx = cmToPx(sizeCm, dpi);
 
@@ -201,7 +203,7 @@ document.getElementById('processBtn').addEventListener('click', async () => {
       let canvas = resizeToSquare(img, sizePx);
 
       // ۲. حاشیه (روی تصویر رسم می‌شه)
-      canvas = applyBorder(canvas, borderW, borderC, doExpand);
+      canvas = applyBorder(canvas, borderW, borderC, canvasEx);
 
       // ۳. مهر
       if (stampImg) {
