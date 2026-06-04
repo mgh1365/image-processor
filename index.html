@@ -21,4 +21,43 @@
         <input type="number" id="sizeInput" value="15" min="1" max="100" step="0.5" />
       </label>
       <label>DPI:
-        <input type="number" id="dpiInput" value="96" min="72
+        <input type="number" id="dpiInput" value="96" min="72" max="300" step="1" />
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>فشرده‌سازی</h2>
+      <label>حجم هدف (کیلوبایت):
+        <input type="number" id="targetSizeInput" value="200" min="10" max="5000" step="10" />
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>حاشیه</h2>
+      <label>ضخامت حاشیه (پیکسل):
+        <input type="number" id="borderWidthInput" value="5" min="0" max="50" step="1" />
+      </label>
+      <label>رنگ حاشیه:
+        <input type="color" id="borderColorInput" value="#000000" />
+      </label>
+      <label>
+        <input type="checkbox" id="canvasExpandInput" checked />
+        توسعه ۲ پیکسلی بوم (سفید)
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>مهر</h2>
+      <label>
+        <input type="checkbox" id="stampEnabledInput" checked />
+        اعمال مهر (assets/stamp.png)
+      </label>
+    </section>
+
+    <button id="processBtn">پردازش و دانلود</button>
+    <div id="status"></div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
