@@ -58,7 +58,7 @@ body {
   border: 1px solid var(--border-color);
 }
 
-.card h2 {
+.card > h2 {
   font-size: 1rem;
   margin-bottom: 0.75rem;
   color: var(--primary-color);
@@ -91,11 +91,66 @@ body {
 
 .upload-area p { color: var(--text-muted); font-weight: 500; font-size: 0.95rem; }
 
-/* Settings Grid */
+/* Settings Accordion */
+.settings-accordion {
+  padding: 0; /* Remove default card padding */
+  overflow: hidden;
+}
+
+.accordion-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  cursor: pointer;
+  background-color: #f7fafc;
+  font-weight: 600;
+  color: var(--primary-color);
+  list-style: none; /* Hide default arrow in standard browsers */
+}
+
+.accordion-summary::-webkit-details-marker {
+  display: none; /* Hide arrow in Safari */
+}
+
+.accordion-summary:hover {
+  background-color: #edf2f7;
+}
+
+.summary-title { font-size: 0.95rem; }
+.summary-icon { font-size: 0.8rem; transition: transform 0.2s; color: var(--text-muted); }
+
+/* Rotate icon when opened */
+details[open] .summary-icon {
+  transform: rotate(180deg);
+}
+
+details[open] .accordion-summary {
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* Nested Grid */
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 0.75rem;
+  padding: 1rem;
+  background-color: var(--card-bg);
+}
+
+.nested-card {
+  background-color: #fafafa;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+}
+
+.nested-card h2 {
+  font-size: 0.95rem;
+  margin-bottom: 0.75rem;
+  color: var(--text-main);
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.25rem;
 }
 
 .input-group {
