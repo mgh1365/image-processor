@@ -3,90 +3,22 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ویرایشگر تصویر</title>
+  <title>پردازش تصویر</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-
   <div class="container">
-    <h1>ویرایشگر تصویر</h1>
+    <h1>پردازش تصویر</h1>
 
-    <!-- آپلود تصویر -->
-    <div class="upload-area" id="dropZone">
-      <p>تصویر را اینجا بکشید یا کلیک کنید</p>
-      <input type="file" id="fileInput" accept="image/*" multiple hidden />
-    </div>
+    <section class="card">
+      <h2>انتخاب تصاویر</h2>
+      <input type="file" id="fileInput" accept="image/*" multiple />
+    </section>
 
-    <!-- پیش‌نمایش -->
-    <div class="preview-section" id="previewSection" style="display:none">
-      <canvas id="previewCanvas"></canvas>
-    </div>
-
-    <!-- تنظیمات -->
-    <div class="settings">
-
-      <!-- کادر (Border) -->
-      <fieldset>
-        <legend>کادر (Border)</legend>
-        <label>فعال <input type="checkbox" id="borderEnabled" /></label>
-        <label>رنگ <input type="color" id="borderColor" value="#000000" /></label>
-        <label>ضخامت (px) <input type="number" id="borderSize" value="10" min="1" max="100" /></label>
-      </fieldset>
-
-      <!-- مهر (Stamp) -->
-      <fieldset>
-        <legend>مهر (Stamp)</legend>
-        <label>فعال <input type="checkbox" id="stampEnabled" /></label>
-        <label>متن <input type="text" id="stampText" value="نمونه" /></label>
-        <label>رنگ <input type="color" id="stampColor" value="#ff0000" /></label>
-        <label>اندازه فونت <input type="number" id="stampSize" value="40" min="10" max="200" /></label>
-        <label>موقعیت
-          <select id="stampPosition">
-            <option value="bottom-right">پایین راست</option>
-            <option value="bottom-left">پایین چپ</option>
-            <option value="top-right">بالا راست</option>
-            <option value="top-left">بالا چپ</option>
-            <option value="center">مرکز</option>
-          </select>
-        </label>
-      </fieldset>
-
-      <!-- تغییر اندازه -->
-      <fieldset>
-        <legend>تغییر اندازه</legend>
-        <label>فعال <input type="checkbox" id="resizeEnabled" /></label>
-        <label>عرض (px) <input type="number" id="resizeWidth" value="800" min="10" /></label>
-        <label>ارتفاع (px) <input type="number" id="resizeHeight" value="600" min="10" /></label>
-        <label>نسبت ابعاد <input type="checkbox" id="keepAspect" checked /></label>
-      </fieldset>
-
-      <!-- فشرده‌سازی -->
-      <fieldset>
-        <legend>فشرده‌سازی</legend>
-        <label>کیفیت (۰ تا ۱) <input type="range" id="quality" min="0.1" max="1" step="0.05" value="0.85" /></label>
-        <span id="qualityValue">0.85</span>
-        <label>فرمت خروجی
-          <select id="outputFormat">
-            <option value="image/jpeg">JPEG</option>
-            <option value="image/png">PNG</option>
-            <option value="image/webp">WebP</option>
-          </select>
-        </label>
-      </fieldset>
-
-    </div>
-
-    <!-- دکمه‌ها -->
-    <div class="actions">
-      <button id="previewBtn">پیش‌نمایش</button>
-      <button id="downloadBtn">دانلود همه</button>
-    </div>
-
-    <!-- لیست فایل‌ها -->
-    <div class="file-list" id="fileList"></div>
-
-  </div>
-
-  <script src="renderer.js"></script>
-</body>
-</html>
+    <section class="card">
+      <h2>تغییر اندازه (مربعی)</h2>
+      <label>اندازه (سانتی‌متر):
+        <input type="number" id="sizeInput" value="15" min="1" max="100" step="0.5" />
+      </label>
+      <label>DPI:
+        <input type="number" id="dpiInput" value="96" min="72
