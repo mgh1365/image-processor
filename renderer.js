@@ -1,5 +1,5 @@
 /**
- * Image Processing — Web App (Base Version - No Hidden Text Watermark)
+ * Image Processing — Web App (Format Resilient Version)
  */
 
 const STAMP_PATH = 'assets/stamp.png';
@@ -40,12 +40,15 @@ function loadImage(src) {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`Load Error for ${src}`));
+    img.onerror = () => reject(new Error(`خطا در بارگذاری تصویر: ${src}`));
     img.src = src;
   });
 }
 
-function setStatus(msg) { document.getElementById('status').textContent = msg; }
+function setStatus(msg) { 
+  console.log("Status:", msg);
+  document.getElementById('status').textContent = msg; 
+}
 function setUploadStatus(msg) { uploadStatus.textContent = msg; }
 
 function getBaseName(fileName) {
@@ -68,17 +71,14 @@ function getFormattedTimestamp() {
 
 // --- Clear List Logic ---
 function clearList() {
-  // Release memory
   readyImages.forEach(item => URL.revokeObjectURL(item.blobUrl));
   processQueue.forEach(item => URL.revokeObjectURL(item.blobUrl));
   
-  // Reset states
   readyImages = [];
   processQueue = [];
   currentProcessIndex = 0;
   fileInput.value = '';
   
-  // Reset UI
   fileListContainer.innerHTML = '';
   fileListCard.style.display = 'none';
   cropModal.style.display = 'none';
@@ -157,7 +157,6 @@ function resetEditorControls() {
 }
 
 function updateFilterPreview() {
-  // Target ALL images inside the Cropper container to ensure the crop box itself shows the filter
   const cropperImages = document.querySelectorAll('.cropper-container img');
   const filterString = `brightness(${brightnessSlider.value}%) contrast(${contrastSlider.value}%) saturate(${saturateSlider.value}%)`;
   
@@ -166,37 +165,34 @@ function updateFilterPreview() {
   });
 }
 
-// Event listeners for editor controls
 rotationSlider.addEventListener('input', (e) => {
   if (cropperInstance) {
     cropperInstance.rotateTo(Number(e.target.value));
     rotationValue.textContent = e.target.value;
   }
 });
-
-brightnessSlider.addEventListener('input', (e) => {
-  brightnessValue.textContent = e.target.value;
-  updateFilterPreview();
-});
-contrastSlider.addEventListener('input', (e) => {
-  contrastValue.textContent = e.target.value;
-  updateFilterPreview();
-});
-saturateSlider.addEventListener('input', (e) => {
-  saturateValue.textContent = e.target.value;
-  updateFilterPreview();
-});
+brightnessSlider.addEventListener('input', (e) => { brightnessValue.textContent = e.target.value; updateFilterPreview(); });
+contrastSlider.addEventListener('input', (e) => { contrastValue.textContent = e.target.value; updateFilterPreview(); });
+saturateSlider.addEventListener('input', (e) => { saturateValue.textContent = e.target.value; updateFilterPreview(); });
 
 confirmCropBtn.addEventListener('click', () => {
   if (!cropperInstance) return;
 
   const currentItem = processQueue[currentProcessIndex];
   
+  // این مرحله تصویر را به صورت استاندارد در یک Canvas پردازش می‌کند تا مشکل فرمت‌های نامتعارف حل شود
   const croppedCanvas = cropperInstance.getCroppedCanvas({
     fillColor: '#ffffff',
     imageSmoothingEnabled: true,
     imageSmoothingQuality: 'high'
   });
+
+  if (!croppedCanvas) {
+    alert("خطا در برش تصویر. فرمت تصویر ممکن است پشتیبانی نشود.");
+    currentProcessIndex++;
+    startNextInQueue();
+    return;
+  }
 
   const finalCanvas = document.createElement('canvas');
   finalCanvas.width = croppedCanvas.width;
@@ -206,7 +202,15 @@ confirmCropBtn.addEventListener('click', () => {
   finalCtx.filter = `brightness(${brightnessSlider.value}%) contrast(${contrastSlider.value}%) saturate(${saturateSlider.value}%)`;
   finalCtx.drawImage(croppedCanvas, 0, 0);
 
+  // تمام تصاویر اینجا به فرمت استاندارد JPEG با بالاترین کیفیت تبدیل و ذخیره موقت می‌شوند
   finalCanvas.toBlob((blob) => {
+    if(!blob) {
+       console.error("خطا در ساخت Blob از تصویر");
+       currentProcessIndex++;
+       startNextInQueue();
+       return;
+    }
+
     readyImages.push({
       id: `img_${imageCounter++}`,
       originalName: currentItem.originalName,
@@ -215,7 +219,7 @@ confirmCropBtn.addEventListener('click', () => {
 
     currentProcessIndex++;
     startNextInQueue();
-  }, 'image/jpeg', 0.95);
+  }, 'image/jpeg', 0.98);
 });
 
 function renderFileList() {
@@ -251,61 +255,78 @@ function renderFileList() {
 // --- Final Processing Logic ---
 async function startProcessing() {
   if (!readyImages.length) {
-    setStatus('تصویری در لیست برای پردازش وجود ندارد.');
+    setStatus('❌ تصویری در لیست برای پردازش وجود ندارد.');
     return;
   }
 
-  const sizeCm = parseFloat(document.getElementById('sizeInput').value) || 15;
-  const dpi = parseInt(document.getElementById('dpiInput').value) || 150;
-  const targetKB = parseFloat(document.getElementById('targetSizeInput').value) || 200;
-  const borderW = parseInt(document.getElementById('borderWidthInput').value) || 0;
-  const canvasEx = parseInt(document.getElementById('canvasExpandInput').value) || 0;
-  const borderC = document.getElementById('borderColorInput').value;
-  const doStamp = document.getElementById('stampEnabledInput').checked;
+  try {
+    const sizeCm = parseFloat(document.getElementById('sizeInput').value) || 15;
+    const dpi = parseInt(document.getElementById('dpiInput').value) || 150;
+    const targetKB = parseFloat(document.getElementById('targetSizeInput').value) || 200;
+    const borderW = parseInt(document.getElementById('borderWidthInput').value) || 0;
+    const canvasEx = parseInt(document.getElementById('canvasExpandInput').value) || 0;
+    const borderC = document.getElementById('borderColorInput').value;
+    const doStamp = document.getElementById('stampEnabledInput').checked;
 
-  const sizePx = cmToPx(sizeCm, dpi);
-  const timestampSuffix = getFormattedTimestamp();
+    const sizePx = cmToPx(sizeCm, dpi);
+    const timestampSuffix = getFormattedTimestamp();
 
-  let stampImg = null;
-  if (doStamp) {
-    try { stampImg = await loadImage(STAMP_PATH); } 
-    catch { setStatus('⚠️ مهر یافت نشد - ادامه بدون مهر'); }
-  }
-
-  setStatus(`در حال پردازش...`);
-
-  for (let i = 0; i < readyImages.length; i++) {
-    const currentItem = readyImages[i];
-    setStatus(`در حال پردازش ${i + 1} از ${readyImages.length}...`);
-
-    try {
-      const img = await loadImage(currentItem.blobUrl);
-      let canvas = resizeToSquare(img, sizePx);
-      canvas = applyBorder(canvas, borderW, borderC, canvasEx);
-      if (stampImg) canvas = await applyStamp(canvas, stampImg);
-      
-      const blob = await compressToTargetSize(canvas, targetKB);
-
-      const inputEl = document.getElementById(`nameInput_${currentItem.id}`);
-      let customName = inputEl && inputEl.value.trim() !== '' ? inputEl.value.trim() : getBaseName(currentItem.originalName);
-      
-      const ext = blob.type === 'image/jpeg' ? 'jpg' : 'png';
-      const finalFileName = `${customName}_${timestampSuffix}.${ext}`;
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = finalFileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error(err);
-      setStatus(`❌ خطا در پردازش: ${err.message}`);
+    let stampImg = null;
+    if (doStamp) {
+      try { 
+        stampImg = await loadImage(STAMP_PATH); 
+      } catch (e) { 
+        console.warn('مهر یافت نشد.');
+        setStatus('⚠️ مهر یافت نشد - ادامه پردازش بدون مهر...'); 
+      }
     }
+
+    setStatus('⏳ در حال آماده‌سازی پردازش...');
+
+    for (let i = 0; i < readyImages.length; i++) {
+      const currentItem = readyImages[i];
+      setStatus(`⏳ در حال پردازش تصویر ${i + 1} از ${readyImages.length}...`);
+
+      try {
+        const img = await loadImage(currentItem.blobUrl);
+        let canvas = resizeToSquare(img, sizePx);
+        canvas = applyBorder(canvas, borderW, borderC, canvasEx);
+        
+        if (stampImg) {
+          canvas = await applyStamp(canvas, stampImg);
+        }
+        
+        const blob = await compressToTargetSize(canvas, targetKB);
+        if (!blob) throw new Error("خطا در مرحله فشرده‌سازی تصویر.");
+
+        const inputEl = document.getElementById(`nameInput_${currentItem.id}`);
+        let customName = inputEl && inputEl.value.trim() !== '' ? inputEl.value.trim() : getBaseName(currentItem.originalName);
+        
+        const ext = blob.type === 'image/png' ? 'png' : 'jpg';
+        const finalFileName = `${customName}_${timestampSuffix}.${ext}`;
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = finalFileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+      } catch (err) {
+        console.error(`خطا در تصویر ${i + 1}:`, err);
+        setStatus(`❌ خطا در تصویر ${i + 1}: ${err.message}`);
+        // یک مکث کوتاه برای دیده شدن خطا، سپس ادامه برای تصویر بعدی
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+    
+    setStatus(`✅ عملیات پردازش و دانلود به طور کامل انجام شد.`);
+  } catch (globalErr) {
+    console.error("خطای کلی:", globalErr);
+    setStatus(`❌ خطای پیش‌بینی نشده: ${globalErr.message}`);
   }
-  setStatus(`✅ عملیات کامل شد.`);
 }
 
 function resizeToSquare(img, sizePx) {
@@ -313,7 +334,6 @@ function resizeToSquare(img, sizePx) {
   canvas.width = sizePx; canvas.height = sizePx;
   const ctx = canvas.getContext('2d');
   
-  // Highest quality image rendering for the main background
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   
@@ -346,8 +366,6 @@ function applyBorder(srcCanvas, borderWidth, borderColor, expandValue) {
 
 async function applyStamp(canvas, stampImg) {
   const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
-  
-  // Ensure the highest quality rendering for the stamp/watermark
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   
@@ -361,20 +379,23 @@ async function applyStamp(canvas, stampImg) {
 
 async function compressToTargetSize(canvas, targetKB) {
   const targetBytes = targetKB * 1024;
-  let quality = 0.9;
+  let quality = 0.95; // شروع با کیفیت بسیار بالا
+  
   let currentBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', quality));
 
-  while (currentBlob.size > targetBytes && quality > 0.1) {
+  // کاهش کیفیت تا رسیدن به حجم مورد نظر
+  while (currentBlob && currentBlob.size > targetBytes && quality > 0.1) {
     quality -= 0.1;
     currentBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', quality));
   }
   
-  if (currentBlob.size > targetBytes) {
+  if (currentBlob && currentBlob.size > targetBytes) {
       currentBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', 0.1));
   }
 
+  // تلاش برای ساخت PNG به عنوان آخرین راهکار در صورتی که حجم بهتری بدهد (مخصوص تصاویر ساده)
   const pngBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/png'));
-  if (pngBlob.size < currentBlob.size) {
+  if (pngBlob && currentBlob && pngBlob.size < currentBlob.size) {
     return pngBlob;
   }
 
