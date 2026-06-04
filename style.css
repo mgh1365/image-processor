@@ -116,7 +116,7 @@ input[type="color"] { padding: 0.1rem; height: 30px; cursor: pointer; }
 
 .bottom-action-container { text-align: center; margin-top: 1rem; padding-bottom: 2rem; }
 .bottom-action-buttons { display: flex; justify-content: center; gap: 0.5rem; }
-.status-text { margin-top: 0.5rem; color: var(--text-muted); font-size: 0.85rem; }
+.status-text { margin-top: 0.5rem; color: var(--text-muted); font-size: 0.85rem; font-weight: bold; }
 
 /* Modal & Editor */
 .modal {
