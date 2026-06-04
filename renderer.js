@@ -1,5 +1,5 @@
 /**
- * Image Processing — Web App (Minimal UI with Preview & Renaming)
+ * Image Processing — Web App (Stable Version)
  */
 
 const STAMP_PATH = 'assets/stamp.png';
@@ -8,7 +8,7 @@ let readyImages = [];
 let cropQueue = [];
 let currentCropIndex = 0;
 let cropperInstance = null;
-let imageCounter = 0; // برای تخصیص ID به تصاویر
+let imageCounter = 0;
 
 const fileInput = document.getElementById('fileInput');
 const cropModal = document.getElementById('cropModal');
@@ -29,7 +29,7 @@ function loadImage(src) {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`بارگذاری ناموفق: ${src}`));
+    img.onerror = () => reject(new Error(`Load Error`));
     img.src = src;
   });
 }
@@ -42,35 +42,48 @@ function setUploadStatus(msg) {
   uploadStatus.textContent = msg;
 }
 
-// ساخت رشته تاریخ و زمان شمسی به فرمت: YYYYMMDD,HHMMSS
+// تابع ایمن برای استخراج نام فایل بدون پسوند
+function getBaseName(fileName) {
+  if (!fileName) return `image_${Date.now()}`;
+  const lastDot = fileName.lastIndexOf('.');
+  return lastDot !== -1 ? fileName.substring(0, lastDot) : fileName;
+}
+
+// ساخت رشته تاریخ ایمن با پشتیبان میلادی در صورت عدم پشتیبانی مرورگر
 function getFormattedTimestamp() {
   const d = new Date();
-  
-  // تولید تاریخ شمسی با اعداد انگلیسی
-  const options = { calendar: 'persian', numberingSystem: 'latn', year: 'numeric', month: '2-digit', day: '2-digit' };
-  const pDate = new Intl.DateTimeFormat('fa-IR', options).format(d);
-  const dateStr = pDate.replace(/\//g, ''); // حذف اسلش‌ها
-  
   const pad = (n) => n.toString().padStart(2, '0');
   const timeStr = pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
   
-  return `${dateStr},${timeStr}`;
+  try {
+    const options = { calendar: 'persian', numberingSystem: 'latn', year: 'numeric', month: '2-digit', day: '2-digit' };
+    const pDate = new Intl.DateTimeFormat('fa-IR', options).format(d);
+    const dateStr = pDate.replace(/\//g, '');
+    return `${dateStr},${timeStr}`;
+  } catch (err) {
+    // در صورتی که مرورگر تاریخ شمسی را پشتیبانی نکرد
+    const y = d.getFullYear();
+    const m = pad(d.getMonth() + 1);
+    const day = pad(d.getDate());
+    return `${y}${m}${day},${timeStr}`;
+  }
 }
 
 // ——— Crop & List Logic ———
 
 fileInput.addEventListener('change', async (e) => {
   const files = e.target.files;
-  if (!files.length) return;
+  if (!files || files.length === 0) return;
 
-  setUploadStatus('در حال بررسی ابعاد...');
+  setUploadStatus('در حال آماده‌سازی تصاویر...');
   
+  // پاک‌سازی قبلی‌ها
   readyImages.forEach(item => URL.revokeObjectURL(item.blobUrl));
   readyImages = [];
   cropQueue = [];
   currentCropIndex = 0;
   fileListContainer.innerHTML = '';
-  fileListCard.classList.add('hidden');
+  fileListCard.style.display = 'none';
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
@@ -83,9 +96,12 @@ fileInput.addEventListener('change', async (e) => {
         readyImages.push({ id: `img_${imageCounter++}`, originalName: file.name, blobUrl: objectUrl });
       }
     } catch (err) {
-      console.error(err);
+      console.warn('Cannot load image:', file.name);
     }
   }
+  
+  // ریست کردن اینپوت برای اینکه کاربر بتواند همان فایل‌ها را دوباره انتخاب کند
+  fileInput.value = '';
 
   processCropQueue();
 });
@@ -93,10 +109,10 @@ fileInput.addEventListener('change', async (e) => {
 function processCropQueue() {
   if (currentCropIndex < cropQueue.length) {
     const currentItem = cropQueue[currentCropIndex];
-    document.getElementById('cropModalText').textContent = `تصویر "${currentItem.originalName}" مربع نیست.`;
+    document.getElementById('cropModalText').textContent = `کادر برش را برای تصویر تنظیم کنید.`;
     
     cropImage.src = currentItem.blobUrl;
-    cropModal.classList.remove('hidden');
+    cropModal.style.display = 'flex';
 
     if (cropperInstance) cropperInstance.destroy();
     cropperInstance = new Cropper(cropImage, {
@@ -107,7 +123,7 @@ function processCropQueue() {
       background: false,
     });
   } else {
-    cropModal.classList.add('hidden');
+    cropModal.style.display = 'none';
     renderFileList();
   }
 }
@@ -129,15 +145,15 @@ confirmCropBtn.addEventListener('click', () => {
   }, 'image/jpeg', 1.0);
 });
 
-// نمایش لیست تصاویر آماده به همراه تکست‌باکس نام‌گذاری
+// رندر ایمن و ساده لیست
 function renderFileList() {
   if (readyImages.length === 0) {
-    setUploadStatus('هیچ تصویری انتخاب نشده است.');
+    setUploadStatus('تصویری آماده نشد.');
     return;
   }
   
-  setUploadStatus(`${readyImages.length} تصویر آماده تنظیم نام و پردازش است.`);
-  fileListCard.classList.remove('hidden');
+  setUploadStatus(`تعداد ${readyImages.length} تصویر آماده پردازش است.`);
+  fileListCard.style.display = 'block';
   fileListContainer.innerHTML = '';
 
   readyImages.forEach(item => {
@@ -150,9 +166,9 @@ function renderFileList() {
     const input = document.createElement('input');
     input.type = 'text';
     input.id = `nameInput_${item.id}`;
-    // حذف پسوند فایل از نام اصلی به عنوان راهنمای Placeholder
-    const nameWithoutExt = item.originalName.replace(/\.[^/.]+$/, "");
-    input.placeholder = `نام دلخواه (پیش‌فرض: ${nameWithoutExt})`;
+    
+    const baseName = getBaseName(item.originalName);
+    input.placeholder = `نام دلخواه (پیش‌فرض: ${baseName})`;
 
     row.appendChild(thumb);
     row.appendChild(input);
@@ -263,4 +279,32 @@ async function compressToTargetSize(canvas, targetKB) {
 
 async function startProcessing() {
   if (!readyImages.length) {
-    setStatus('ابتدا تصاویر را انتخاب و در
+    setStatus('تصویری برای پردازش وجود ندارد.');
+    return;
+  }
+
+  const sizeCm      = parseFloat(document.getElementById('sizeInput').value) || 15;
+  const dpi         = parseInt(document.getElementById('dpiInput').value) || 150;
+  const targetKB    = parseFloat(document.getElementById('targetSizeInput').value) || 200;
+  const borderW     = parseInt(document.getElementById('borderWidthInput').value) || 0;
+  const canvasEx    = parseInt(document.getElementById('canvasExpandInput').value) || 0;
+  const borderC     = document.getElementById('borderColorInput').value;
+  const doStamp     = document.getElementById('stampEnabledInput').checked;
+
+  const sizePx = cmToPx(sizeCm, dpi);
+  const timestampSuffix = getFormattedTimestamp();
+
+  let stampImg = null;
+  if (doStamp) {
+    try {
+      stampImg = await loadImage(STAMP_PATH);
+    } catch {
+      setStatus('⚠️ مهر یافت نشد - ادامه بدون مهر');
+    }
+  }
+
+  setStatus(`در حال پردازش...`);
+
+  for (let i = 0; i < readyImages.length; i++) {
+    const currentItem = readyImages[i];
+    setStatus
