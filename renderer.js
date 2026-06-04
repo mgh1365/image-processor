@@ -1,148 +1,202 @@
-const { ipcRenderer } = require('electron');
-
-const dropZone = document.getElementById('dropZone');
-const btnSelect = document.getElementById('btnSelect');
-const btnClear = document.getElementById('btnClear');
-const fileListEl = document.getElementById('fileList');
-
-const enableBorderEl = document.getElementById('enableBorder');
-const enableStampEl = document.getElementById('enableStamp');
-const enableCompressEl = document.getElementById('enableCompress');
-const targetKBEl = document.getElementById('targetKB');
-const targetWidthCmEl = document.getElementById('targetWidthCm');
-const openOutputsEl = document.getElementById('openOutputs');
-const stampPathEl = document.getElementById('stampPath');
-const btnStamp = document.getElementById('btnStamp');
-const btnRun = document.getElementById('btnRun');
-const logEl = document.getElementById('log');
-
+// ==================== state ====================
 let files = [];
 
-function log(msg) {
-  logEl.textContent += msg + '\n';
-  logEl.scrollTop = logEl.scrollHeight;
-}
+// ==================== DOM refs ====================
+const dropZone     = document.getElementById('dropZone');
+const fileInput    = document.getElementById('fileInput');
+const fileList     = document.getElementById('fileList');
+const previewSection = document.getElementById('previewSection');
+const previewCanvas  = document.getElementById('previewCanvas');
+const qualitySlider  = document.getElementById('quality');
+const qualityValue   = document.getElementById('qualityValue');
 
-function renderFiles() {
-  fileListEl.innerHTML = '';
-  for (const p of files) {
-    const li = document.createElement('li');
-    li.textContent = p;
-    fileListEl.appendChild(li);
-  }
-}
+// ==================== upload ====================
+dropZone.addEventListener('click', () => fileInput.click());
 
-function addFiles(paths) {
-  const set = new Set(files);
-  for (const p of (paths || [])) {
-    if (p && typeof p === 'string') set.add(p.trim());
-  }
-  files = [...set].filter(Boolean);
-  renderFiles();
-}
-
-['dragenter', 'dragover'].forEach((ev) => {
-  dropZone.addEventListener(ev, (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dropZone.classList.add('active');
-  });
+dropZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  dropZone.classList.add('dragover');
 });
 
-['dragleave', 'drop'].forEach((ev) => {
-  dropZone.addEventListener(ev, (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dropZone.classList.remove('active');
-  });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  addFiles(e.dataTransfer.files);
 });
 
-dropZone.addEventListener('drop', (e) => {
-  const arr = [];
-  for (const f of e.dataTransfer.files) {
-    if (f.path) arr.push(f.path);
-  }
-  addFiles(arr);
-  log(`+ ${arr.length} فایل اضافه شد (Drag & Drop).`);
+fileInput.addEventListener('change', () => addFiles(fileInput.files));
+
+qualitySlider.addEventListener('input', () => {
+  qualityValue.textContent = qualitySlider.value;
 });
 
-btnSelect.addEventListener('click', async () => {
-  try {
-    const selected = await ipcRenderer.invoke('select-files');
-    addFiles(selected);
-    log(`+ ${(selected || []).length} فایل اضافه شد (Select).`);
-  } catch (err) {
-    log('خطا در انتخاب فایل: ' + (err.message || err));
-  }
-});
-
-btnClear.addEventListener('click', () => {
-  files = [];
-  renderFiles();
-  log('لیست فایل‌ها پاک شد.');
-});
-
-btnStamp.addEventListener('click', async () => {
-  try {
-    const p = await ipcRenderer.invoke('pick-stamp');
-    if (p) {
-      stampPathEl.value = p;
-      log('مهر انتخاب شد: ' + p);
+function addFiles(newFiles) {
+  for (const f of newFiles) {
+    if (f.type.startsWith('image/')) {
+      files.push(f);
     }
-  } catch (err) {
-    log('خطا در انتخاب مهر: ' + (err.message || err));
   }
-});
+  renderFileList();
+  if (files.length > 0) showPreview(files[0]);
+}
 
-btnRun.addEventListener('click', async () => {
-  if (!files.length) {
-    log('هیچ فایلی انتخاب نشده.');
-    return;
-  }
+function renderFileList() {
+  fileList.innerHTML = '';
+  files.forEach((f, i) => {
+    const div = document.createElement('div');
+    div.className = 'file-item';
+    div.innerHTML = `<span>${f.name}</span><span class="remove" data-i="${i}">✕</span>`;
+    fileList.appendChild(div);
+  });
 
-  const payload = {
-    filePaths: files,
-    enableBorder: enableBorderEl.checked,
-    enableStamp: enableStampEl.checked,
-    enableCompress: enableCompressEl.checked,
-    targetKB: Number(targetKBEl.value || 350),
-    targetWidthCm: Number(targetWidthCmEl.value || 15),
-    openOutputs: openOutputsEl.checked,
-    stampPath: (stampPathEl.value || '').trim()
+  fileList.querySelectorAll('.remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      files.splice(Number(btn.dataset.i), 1);
+      renderFileList();
+      if (files.length > 0) showPreview(files[0]);
+      else previewSection.style.display = 'none';
+    });
+  });
+}
+
+// ==================== settings ====================
+function getSettings() {
+  return {
+    border: {
+      enabled: document.getElementById('borderEnabled').checked,
+      color:   document.getElementById('borderColor').value,
+      size:    parseInt(document.getElementById('borderSize').value) || 10,
+    },
+    stamp: {
+      enabled:  document.getElementById('stampEnabled').checked,
+      text:     document.getElementById('stampText').value,
+      color:    document.getElementById('stampColor').value,
+      fontSize: parseInt(document.getElementById('stampSize').value) || 40,
+      position: document.getElementById('stampPosition').value,
+    },
+    resize: {
+      enabled:    document.getElementById('resizeEnabled').checked,
+      width:      parseInt(document.getElementById('resizeWidth').value) || 800,
+      height:     parseInt(document.getElementById('resizeHeight').value) || 600,
+      keepAspect: document.getElementById('keepAspect').checked,
+    },
+    quality: parseFloat(qualitySlider.value),
+    format:  document.getElementById('outputFormat').value,
   };
+}
 
-  btnRun.disabled = true;
-  log('شروع پردازش...');
+// ==================== core processing ====================
+function processImage(imgEl, settings) {
+  const canvas = document.createElement('canvas');
+  const ctx    = canvas.getContext('2d');
 
-  try {
-    const out = await ipcRenderer.invoke('process-images', payload);
+  let w = imgEl.naturalWidth;
+  let h = imgEl.naturalHeight;
 
-    let ok = 0;
-    let fail = 0;
+  // resize
+  if (settings.resize.enabled) {
+    if (settings.resize.keepAspect) {
+      const ratio = Math.min(settings.resize.width / w, settings.resize.height / h);
+      w = Math.round(w * ratio);
+      h = Math.round(h * ratio);
+    } else {
+      w = settings.resize.width;
+      h = settings.resize.height;
+    }
+  }
 
-    for (const r of out) {
-      if (r.ok) {
-        ok++;
-        log(`✓ ${r.output} | size=${Number(r.sizeKB || 0).toFixed(1)}KB | q=${r.quality}${r.scaleApplied ? ` | scale=${r.scaleApplied}` : ''}`);
-      } else {
-        fail++;
-        log(`✗ ${r.input} -> ${r.error}`);
-      }
+  canvas.width  = w;
+  canvas.height = h;
+  ctx.drawImage(imgEl, 0, 0, w, h);
+
+  // border
+  if (settings.border.enabled) {
+    const s = settings.border.size;
+    ctx.strokeStyle = settings.border.color;
+    ctx.lineWidth   = s * 2; // stroke is centered on edge, so double it
+    ctx.strokeRect(0, 0, w, h);
+  }
+
+  // stamp
+  if (settings.stamp.enabled && settings.stamp.text) {
+    const fs  = settings.stamp.fontSize;
+    ctx.font  = `bold ${fs}px sans-serif`;
+    ctx.fillStyle = settings.stamp.color;
+    ctx.textBaseline = 'middle';
+
+    const padding  = 20;
+    const textW    = ctx.measureText(settings.stamp.text).width;
+    let x, y;
+
+    switch (settings.stamp.position) {
+      case 'top-left':     x = padding;          y = padding + fs / 2; break;
+      case 'top-right':    x = w - textW - padding; y = padding + fs / 2; break;
+      case 'bottom-left':  x = padding;          y = h - padding - fs / 2; break;
+      case 'bottom-right': x = w - textW - padding; y = h - padding - fs / 2; break;
+      default:             x = (w - textW) / 2;  y = h / 2; // center
     }
 
-    log(`اتمام. موفق: ${ok} | ناموفق: ${fail}`);
-    alert(`اتمام پردازش\nموفق: ${ok}\nناموفق: ${fail}`);
-  } catch (err) {
-    log('خطای پردازش: ' + (err.message || err));
-    alert('خطا: ' + (err.message || err));
-  } finally {
-    btnRun.disabled = false;
+    // سایه برای خوانایی بهتر
+    ctx.shadowColor   = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur    = 4;
+    ctx.shadowOffsetX = 2;
+    ctx.shadowOffsetY = 2;
+    ctx.fillText(settings.stamp.text, x, y);
+    ctx.shadowColor = 'transparent';
   }
+
+  return canvas;
+}
+
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload  = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = reject;
+    img.src     = url;
+  });
+}
+
+// ==================== preview ====================
+async function showPreview(file) {
+  const img      = await loadImage(file);
+  const settings = getSettings();
+  const canvas   = processImage(img, settings);
+
+  previewCanvas.width  = canvas.width;
+  previewCanvas.height = canvas.height;
+  previewCanvas.getContext('2d').drawImage(canvas, 0, 0);
+  previewSection.style.display = 'block';
+}
+
+document.getElementById('previewBtn').addEventListener('click', () => {
+  if (files.length > 0) showPreview(files[0]);
 });
 
-try {
-  if (!ipcRenderer) throw new Error('ipcRenderer unavailable');
-  log('Renderer آماده است.');
-} catch (e) {
-  log('خطا: این صفحه باید داخل Electron اجرا شود. ' + e.message);
-}
+// ==================== download ====================
+document.getElementById('downloadBtn').addEventListener('click', async () => {
+  if (files.length === 0) { alert('هیچ فایلی انتخاب نشده'); return; }
+
+  const settings = getSettings();
+  const ext      = settings.format === 'image/png'  ? 'png'
+                 : settings.format === 'image/webp' ? 'webp'
+                 : 'jpg';
+
+  for (const file of files) {
+    const img    = await loadImage(file);
+    const canvas = processImage(img, settings);
+    const dataURL = canvas.toDataURL(settings.format, settings.quality);
+
+    const a      = document.createElement('a');
+    const base   = file.name.replace(/\.[^.]+$/, '');
+    a.href       = dataURL;
+    a.download   = `${base}_edited.${ext}`;
+    a.click();
+
+    // کمی صبر بین دانلودها
+    await new Promise(r => setTimeout(r, 300));
+  }
+});
