@@ -307,4 +307,43 @@ async function startProcessing() {
 
   for (let i = 0; i < readyImages.length; i++) {
     const currentItem = readyImages[i];
-    setStatus
+    setStatus(`در حال پردازش ${i + 1} از ${readyImages.length}...`);
+
+    try {
+      const img = await loadImage(currentItem.blobUrl);
+      let canvas = resizeToSquare(img, sizePx);
+      canvas = applyBorder(canvas, borderW, borderC, canvasEx);
+      if (stampImg) {
+        canvas = await applyStamp(canvas, stampImg);
+      }
+      
+      const blob = await compressToTargetSize(canvas, targetKB);
+
+      // تشخیص نام فایل
+      const inputEl = document.getElementById(`nameInput_${currentItem.id}`);
+      let customName = inputEl && inputEl.value.trim() !== '' ? inputEl.value.trim() : getBaseName(currentItem.originalName);
+      
+      const ext = blob.type === 'image/jpeg' ? 'jpg' : 'png';
+      const finalFileName = `${customName}_${timestampSuffix}.${ext}`;
+
+      // دانلود
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = finalFileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+    } catch (err) {
+      console.error(err);
+      setStatus(`❌ خطا در پردازش: ${err.message}`);
+    }
+  }
+
+  setStatus(`✅ عملیات کامل شد.`);
+}
+
+document.getElementById('processBtnTop').addEventListener('click', startProcessing);
+document.getElementById('processBtnBottom').addEventListener('click', startProcessing);
