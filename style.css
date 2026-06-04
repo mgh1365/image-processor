@@ -93,7 +93,7 @@ body {
 
 /* Settings Accordion */
 .settings-accordion {
-  padding: 0; /* Remove default card padding */
+  padding: 0;
   overflow: hidden;
 }
 
@@ -106,28 +106,15 @@ body {
   background-color: #f7fafc;
   font-weight: 600;
   color: var(--primary-color);
-  list-style: none; /* Hide default arrow in standard browsers */
+  list-style: none;
 }
 
-.accordion-summary::-webkit-details-marker {
-  display: none; /* Hide arrow in Safari */
-}
-
-.accordion-summary:hover {
-  background-color: #edf2f7;
-}
-
+.accordion-summary::-webkit-details-marker { display: none; }
+.accordion-summary:hover { background-color: #edf2f7; }
 .summary-title { font-size: 0.95rem; }
 .summary-icon { font-size: 0.8rem; transition: transform 0.2s; color: var(--text-muted); }
-
-/* Rotate icon when opened */
-details[open] .summary-icon {
-  transform: rotate(180deg);
-}
-
-details[open] .accordion-summary {
-  border-bottom: 1px solid var(--border-color);
-}
+details[open] .summary-icon { transform: rotate(180deg); }
+details[open] .accordion-summary { border-bottom: 1px solid var(--border-color); }
 
 /* Nested Grid */
 .settings-grid {
@@ -180,73 +167,88 @@ input[type="color"] { padding: 0.1rem; height: 30px; cursor: pointer; }
 }
 
 /* File List & Renaming */
-#fileListContainer {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
+#fileListContainer { display: flex; flex-direction: column; gap: 0.5rem; }
 .file-item {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.5rem;
-  background-color: #f7fafc;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
+  display: flex; align-items: center; gap: 1rem;
+  padding: 0.5rem; background-color: #f7fafc;
+  border: 1px solid var(--border-color); border-radius: var(--radius);
 }
-
 .file-item img {
-  width: 50px;
-  height: 50px;
-  object-fit: cover;
-  border-radius: 4px;
-  border: 1px solid #cbd5e0;
+  width: 50px; height: 50px; object-fit: cover;
+  border-radius: 4px; border: 1px solid #cbd5e0;
 }
-
 .file-item input[type="text"] {
-  flex: 1;
-  width: auto;
-  direction: rtl;
-  text-align: right;
+  flex: 1; width: auto; direction: rtl; text-align: right;
   padding: 0.4rem 0.6rem;
 }
 
 /* Buttons */
 .btn {
-  padding: 0.4rem 1rem;
-  border: none;
-  border-radius: 4px;
-  font-size: 0.95rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.2s;
-  font-family: inherit;
+  padding: 0.4rem 1rem; border: none; border-radius: 4px;
+  font-size: 0.95rem; font-weight: 500; cursor: pointer;
+  transition: background 0.2s; font-family: inherit;
 }
-
 .primary-btn { background-color: var(--primary-color); color: white; }
 .primary-btn:hover { background-color: var(--primary-hover); }
-
 .bottom-action { text-align: center; margin-top: 1rem; padding-bottom: 2rem; }
 .status-text { margin-top: 0.5rem; color: var(--text-muted); font-size: 0.85rem; }
 
-/* Modal */
+/* Modal & Editor */
 .modal {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
   background-color: rgba(0, 0, 0, 0.85);
   display: flex; justify-content: center; align-items: center; z-index: 999;
 }
-
-.modal-content {
+.modal-content-large {
   background-color: var(--card-bg);
   border-radius: var(--radius);
-  width: 90%; max-width: 500px;
+  width: 95%; max-width: 800px;
   display: flex; flex-direction: column; overflow: hidden;
+  max-height: 90vh;
 }
-
 .modal-header { padding: 1rem; border-bottom: 1px solid var(--border-color); }
 .modal-header h2 { margin: 0; font-size: 1.1rem; }
 .modal-header p { color: var(--text-muted); font-size: 0.85rem; margin-top: 0.2rem; }
-.crop-container { width: 100%; height: 350px; background-color: #e2e8f0; }
+
+.editor-body {
+  display: flex;
+  flex: 1;
+  min-height: 400px;
+}
+.crop-container {
+  flex: 1;
+  background-color: #e2e8f0;
+  min-width: 0;
+}
 .crop-container img { max-width: 100%; display: block; }
+.editor-controls {
+  width: 240px;
+  padding: 1rem;
+  background-color: #f7fafc;
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+}
+.editor-controls h3 {
+  font-size: 1rem; margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;
+}
+.control-group {
+  margin-bottom: 1.25rem;
+}
+.control-group label {
+  display: block;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-muted);
+}
+input[type="range"] {
+  width: 100%;
+  cursor: pointer;
+}
 .modal-footer { padding: 1rem; border-top: 1px solid var(--border-color); text-align: left; }
+
+/* Cropperjs Dark Theme */
+.cropper-bg {
+    background-image: none;
+    background-color: #333;
+}
