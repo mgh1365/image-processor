@@ -1,7 +1,4 @@
-* {
-  box-sizing: border-box;
-  font-family: sans-serif;
-}
+* { box-sizing: border-box; font-family: sans-serif; }
 
 body {
   margin: 0;
@@ -10,13 +7,18 @@ body {
 }
 
 .container {
-  max-width: 1000px;
+  max-width: 1020px;
   margin: 20px auto;
   padding: 0 12px;
 }
 
 h1 {
-  margin-bottom: 12px;
+  margin: 0 0 12px;
+}
+
+h2 {
+  margin: 0 0 10px;
+  font-size: 18px;
 }
 
 .panel {
@@ -35,23 +37,31 @@ h1 {
   color: #4f6484;
   background: #f8fbff;
   margin-bottom: 10px;
+  transition: .15s;
+  user-select: none;
 }
 
 .dropzone.active {
   border-color: #2f7cf6;
   background: #eef5ff;
+  color: #245ec0;
 }
 
 .row {
   display: flex;
   gap: 8px;
   margin: 8px 0;
+  flex-wrap: wrap;
 }
 
 .grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+
+@media (max-width: 720px) {
+  .grid2 { grid-template-columns: 1fr; }
 }
 
 label {
@@ -63,15 +73,23 @@ label {
 input[type="text"],
 input[type="number"] {
   width: 100%;
-  padding: 8px;
+  padding: 9px;
   border-radius: 8px;
   border: 1px solid #cdd7e8;
+  outline: none;
+  background: #fff;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus {
+  border-color: #2f7cf6;
 }
 
 .check {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin: 8px 0;
 }
 
 button {
@@ -82,10 +100,23 @@ button {
   cursor: pointer;
 }
 
+button:hover {
+  background: #f8fbff;
+}
+
+button:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
 button.primary {
   background: #2f7cf6;
   color: #fff;
   border-color: #2f7cf6;
+}
+
+button.primary:hover {
+  background: #266ce0;
 }
 
 button.secondary {
@@ -97,6 +128,14 @@ button.secondary {
   padding-left: 18px;
   max-height: 180px;
   overflow: auto;
+  border: 1px solid #edf1f8;
+  border-radius: 8px;
+  background: #fcfdff;
+}
+
+#fileList li {
+  padding: 4px 8px;
+  font-size: 13px;
 }
 
 #log {
@@ -104,6 +143,9 @@ button.secondary {
   color: #d6e2ff;
   border-radius: 10px;
   padding: 10px;
-  min-height: 140px;
+  min-height: 190px;
   white-space: pre-wrap;
+  line-height: 1.6;
+  overflow: auto;
+  border: 1px solid #1f2937;
 }
