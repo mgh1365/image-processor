@@ -1,202 +1,176 @@
-// ==================== state ====================
-let files = [];
+/**
+ * Image Processing — Web App (GitHub Pages)
+ * مهر: پایین چپ، عرض max 25% عرض تصویر، فاصله 5% از گوشه
+ */
 
-// ==================== DOM refs ====================
-const dropZone     = document.getElementById('dropZone');
-const fileInput    = document.getElementById('fileInput');
-const fileList     = document.getElementById('fileList');
-const previewSection = document.getElementById('previewSection');
-const previewCanvas  = document.getElementById('previewCanvas');
-const qualitySlider  = document.getElementById('quality');
-const qualityValue   = document.getElementById('qualityValue');
+const STAMP_PATH = 'assets/stamp.png';
 
-// ==================== upload ====================
-dropZone.addEventListener('click', () => fileInput.click());
+// ——— helpers ———
 
-dropZone.addEventListener('dragover', e => {
-  e.preventDefault();
-  dropZone.classList.add('dragover');
-});
-
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-
-dropZone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropZone.classList.remove('dragover');
-  addFiles(e.dataTransfer.files);
-});
-
-fileInput.addEventListener('change', () => addFiles(fileInput.files));
-
-qualitySlider.addEventListener('input', () => {
-  qualityValue.textContent = qualitySlider.value;
-});
-
-function addFiles(newFiles) {
-  for (const f of newFiles) {
-    if (f.type.startsWith('image/')) {
-      files.push(f);
-    }
-  }
-  renderFileList();
-  if (files.length > 0) showPreview(files[0]);
+function cmToPx(cm, dpi) {
+  return Math.round((cm / 2.54) * dpi);
 }
 
-function renderFileList() {
-  fileList.innerHTML = '';
-  files.forEach((f, i) => {
-    const div = document.createElement('div');
-    div.className = 'file-item';
-    div.innerHTML = `<span>${f.name}</span><span class="remove" data-i="${i}">✕</span>`;
-    fileList.appendChild(div);
-  });
-
-  fileList.querySelectorAll('.remove').forEach(btn => {
-    btn.addEventListener('click', () => {
-      files.splice(Number(btn.dataset.i), 1);
-      renderFileList();
-      if (files.length > 0) showPreview(files[0]);
-      else previewSection.style.display = 'none';
-    });
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`بارگذاری تصویر ناموفق: ${src}`));
+    img.src = src;
   });
 }
 
-// ==================== settings ====================
-function getSettings() {
-  return {
-    border: {
-      enabled: document.getElementById('borderEnabled').checked,
-      color:   document.getElementById('borderColor').value,
-      size:    parseInt(document.getElementById('borderSize').value) || 10,
-    },
-    stamp: {
-      enabled:  document.getElementById('stampEnabled').checked,
-      text:     document.getElementById('stampText').value,
-      color:    document.getElementById('stampColor').value,
-      fontSize: parseInt(document.getElementById('stampSize').value) || 40,
-      position: document.getElementById('stampPosition').value,
-    },
-    resize: {
-      enabled:    document.getElementById('resizeEnabled').checked,
-      width:      parseInt(document.getElementById('resizeWidth').value) || 800,
-      height:     parseInt(document.getElementById('resizeHeight').value) || 600,
-      keepAspect: document.getElementById('keepAspect').checked,
-    },
-    quality: parseFloat(qualitySlider.value),
-    format:  document.getElementById('outputFormat').value,
-  };
+function fileToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = () => reject(new Error('خواندن فایل ناموفق'));
+    reader.readAsDataURL(file);
+  });
 }
 
-// ==================== core processing ====================
-function processImage(imgEl, settings) {
+/**
+ * تغییر اندازه به مربع با حفظ نسبت تصویر (letterbox با배경 سفید)
+ */
+function resizeToSquare(img, sizePx) {
   const canvas = document.createElement('canvas');
-  const ctx    = canvas.getContext('2d');
+  canvas.width = sizePx;
+  canvas.height = sizePx;
+  const ctx = canvas.getContext('2d');
 
-  let w = imgEl.naturalWidth;
-  let h = imgEl.naturalHeight;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, sizePx, sizePx);
 
-  // resize
-  if (settings.resize.enabled) {
-    if (settings.resize.keepAspect) {
-      const ratio = Math.min(settings.resize.width / w, settings.resize.height / h);
-      w = Math.round(w * ratio);
-      h = Math.round(h * ratio);
-    } else {
-      w = settings.resize.width;
-      h = settings.resize.height;
-    }
-  }
+  const ratio = Math.min(sizePx / img.width, sizePx / img.height);
+  const dw = Math.round(img.width * ratio);
+  const dh = Math.round(img.height * ratio);
+  const dx = Math.round((sizePx - dw) / 2);
+  const dy = Math.round((sizePx - dh) / 2);
 
-  canvas.width  = w;
+  ctx.drawImage(img, dx, dy, dw, dh);
+  return canvas;
+}
+
+/**
+ * اعمال حاشیه با border-radius=5 و توسعه اختیاری بوم
+ */
+function applyBorder(srcCanvas, borderWidth, borderColor, expandCanvas) {
+  const expand = expandCanvas ? 2 : 0;
+  const total = borderWidth + expand;
+
+  const w = srcCanvas.width + total * 2;
+  const h = srcCanvas.height + total * 2;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
   canvas.height = h;
-  ctx.drawImage(imgEl, 0, 0, w, h);
+  const ctx = canvas.getContext('2d');
 
-  // border
-  if (settings.border.enabled) {
-    const s = settings.border.size;
-    ctx.strokeStyle = settings.border.color;
-    ctx.lineWidth   = s * 2; // stroke is centered on edge, so double it
-    ctx.strokeRect(0, 0, w, h);
+  // لایه سفید برای توسعه بوم
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+
+  if (borderWidth > 0) {
+    // رسم حاشیه با border-radius=5
+    const bx = expand;
+    const by = expand;
+    const bw = srcCanvas.width + borderWidth * 2;
+    const bh = srcCanvas.height + borderWidth * 2;
+    const r = 5;
+
+    ctx.beginPath();
+    ctx.moveTo(bx + r, by);
+    ctx.lineTo(bx + bw - r, by);
+    ctx.quadraticCurveTo(bx + bw, by, bx + bw, by + r);
+    ctx.lineTo(bx + bw, by + bh - r);
+    ctx.quadraticCurveTo(bx + bw, by + bh, bx + bw - r, by + bh);
+    ctx.lineTo(bx + r, by + bh);
+    ctx.quadraticCurveTo(bx, by + bh, bx, by + bh - r);
+    ctx.lineTo(bx, by + r);
+    ctx.quadraticCurveTo(bx, by, bx + r, by);
+    ctx.closePath();
+
+    ctx.fillStyle = borderColor;
+    ctx.fill();
   }
 
-  // stamp
-  if (settings.stamp.enabled && settings.stamp.text) {
-    const fs  = settings.stamp.fontSize;
-    ctx.font  = `bold ${fs}px sans-serif`;
-    ctx.fillStyle = settings.stamp.color;
-    ctx.textBaseline = 'middle';
-
-    const padding  = 20;
-    const textW    = ctx.measureText(settings.stamp.text).width;
-    let x, y;
-
-    switch (settings.stamp.position) {
-      case 'top-left':     x = padding;          y = padding + fs / 2; break;
-      case 'top-right':    x = w - textW - padding; y = padding + fs / 2; break;
-      case 'bottom-left':  x = padding;          y = h - padding - fs / 2; break;
-      case 'bottom-right': x = w - textW - padding; y = h - padding - fs / 2; break;
-      default:             x = (w - textW) / 2;  y = h / 2; // center
-    }
-
-    // سایه برای خوانایی بهتر
-    ctx.shadowColor   = 'rgba(0,0,0,0.6)';
-    ctx.shadowBlur    = 4;
-    ctx.shadowOffsetX = 2;
-    ctx.shadowOffsetY = 2;
-    ctx.fillText(settings.stamp.text, x, y);
-    ctx.shadowColor = 'transparent';
-  }
+  // تصویر اصلی روی حاشیه
+  ctx.drawImage(srcCanvas, total, total);
 
   return canvas;
 }
 
-function loadImage(file) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload  = () => { URL.revokeObjectURL(url); resolve(img); };
-    img.onerror = reject;
-    img.src     = url;
-  });
+/**
+ * اعمال مهر در گوشه پایین چپ
+ * عرض مهر = min(stampNaturalWidth, 25% عرض canvas)
+ * فاصله از گوشه = 5% عرض canvas
+ */
+async function applyStamp(canvas, stampImg) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+
+  const maxStampW = Math.round(w * 0.25);
+  const stampW = Math.min(stampImg.naturalWidth, maxStampW);
+  const stampH = Math.round((stampImg.naturalHeight / stampImg.naturalWidth) * stampW);
+
+  const margin = Math.round(w * 0.05);
+  const sx = margin;                      // پایین چپ — X از چپ
+  const sy = h - stampH - margin;        // پایین چپ — Y از بالا
+
+  ctx.drawImage(stampImg, sx, sy, stampW, stampH);
+  return canvas;
 }
 
-// ==================== preview ====================
-async function showPreview(file) {
-  const img      = await loadImage(file);
-  const settings = getSettings();
-  const canvas   = processImage(img, settings);
+/**
+ * فشرده‌سازی با جستجوی دودویی برای رسیدن به حجم هدف (KB)
+ */
+async function compressToTargetSize(canvas, targetKB) {
+  const targetBytes = targetKB * 1024;
 
-  previewCanvas.width  = canvas.width;
-  previewCanvas.height = canvas.height;
-  previewCanvas.getContext('2d').drawImage(canvas, 0, 0);
-  previewSection.style.display = 'block';
-}
-
-document.getElementById('previewBtn').addEventListener('click', () => {
-  if (files.length > 0) showPreview(files[0]);
-});
-
-// ==================== download ====================
-document.getElementById('downloadBtn').addEventListener('click', async () => {
-  if (files.length === 0) { alert('هیچ فایلی انتخاب نشده'); return; }
-
-  const settings = getSettings();
-  const ext      = settings.format === 'image/png'  ? 'png'
-                 : settings.format === 'image/webp' ? 'webp'
-                 : 'jpg';
-
-  for (const file of files) {
-    const img    = await loadImage(file);
-    const canvas = processImage(img, settings);
-    const dataURL = canvas.toDataURL(settings.format, settings.quality);
-
-    const a      = document.createElement('a');
-    const base   = file.name.replace(/\.[^.]+$/, '');
-    a.href       = dataURL;
-    a.download   = `${base}_edited.${ext}`;
-    a.click();
-
-    // کمی صبر بین دانلودها
-    await new Promise(r => setTimeout(r, 300));
+  // اگر PNG بدون فشرده‌سازی کوچک‌تر از هدف بود، همانطور برگردان
+  const pngBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/png'));
+  if (pngBlob.size <= targetBytes) {
+    return pngBlob;
   }
-});
+
+  // جستجوی دودویی روی کیفیت JPEG
+  let lo = 0.01, hi = 0.99, best = null;
+  for (let i = 0; i < 20; i++) {
+    const mid = (lo + hi) / 2;
+    const blob = await new Promise(res =>
+      canvas.toBlob(b => res(b), 'image/jpeg', mid)
+    );
+    if (blob.size <= targetBytes) {
+      best = blob;
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+
+  // اگر حتی با کمترین کیفیت هم بزرگ‌تر بود
+  if (!best) {
+    best = await new Promise(res =>
+      canvas.toBlob(b => res(b), 'image/jpeg', 0.01)
+    );
+  }
+
+  return best;
+}
+
+// ——— main ———
+
+document.getElementById('processBtn').addEventListener('click', async () => {
+  const files = document.getElementById('fileInput').files;
+  if (!files.length) {
+    setStatus('لطفاً ابتدا تصاویر را انتخاب کنید.');
+    return;
+  }
+
+  const sizeCm     = parseFloat(document.getElementById('sizeInput').value) || 15;
+  const dpi        = parseInt(document.getElementById('dpiInput').value) || 96;
+  const targetKB   = parseFloat(document.getElementById('targetSizeInput').value) || 200;
+  const borderW    = parseInt(document.getElementById('borderWidthInput').value) || 0;
+  const borderC    = document.getElementById('borderColorInput
