@@ -22,8 +22,9 @@
   <main class="container">
     <section class="card file-upload-section">
       <div class="upload-area">
-        <input type="file" id="fileInput" accept="image/*" multiple />
-        <p>برای انتخاب کلیک کنید یا فایل‌ها را اینجا بکشید</p>
+        <!-- اضافه کردن صریح فرمت‌های رایج در کنار image/* -->
+        <input type="file" id="fileInput" accept="image/jpeg, image/png, image/webp, image/bmp, image/*" multiple />
+        <p>برای انتخاب کلیک کنید یا فایل‌ها (JPG, PNG, WebP) را اینجا بکشید</p>
       </div>
       <div id="uploadStatus" class="status-text"></div>
     </section>
