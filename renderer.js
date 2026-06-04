@@ -1,5 +1,5 @@
 /**
- * Image Processing — Web App (v3.5 - Added Dynamic Font Size & Calculated Background Color for Watermark)
+ * Image Processing — Web App (v3.6 - Percentage Font Size & Exact Average Color for Watermark)
  */
 
 const STAMP_PATH = 'assets/stamp.png';
@@ -264,7 +264,9 @@ async function startProcessing() {
   const borderC = document.getElementById('borderColorInput').value;
   const doStamp = document.getElementById('stampEnabledInput').checked;
   const doWatermark = document.getElementById('watermarkEnabledInput') ? document.getElementById('watermarkEnabledInput').checked : false;
-  const watermarkFontSize = parseInt(document.getElementById('watermarkFontSizeInput').value) || 40;
+  
+  // درصد سایز واترمارک نسبت به عرض تصویر
+  const watermarkSizePercent = parseFloat(document.getElementById('watermarkFontSizeInput').value) || 5;
 
   const sizePx = cmToPx(sizeCm, dpi);
   const timestampSuffix = getFormattedTimestamp();
@@ -287,9 +289,9 @@ async function startProcessing() {
       canvas = applyBorder(canvas, borderW, borderC, canvasEx);
       if (stampImg) canvas = await applyStamp(canvas, stampImg);
       
-      // اعمال واترمارک حروف پراکنده و مخفی با سایز دلخواه
+      // اعمال واترمارک حروف پراکنده و مخفی بر اساس درصد از عرض
       if (doWatermark) {
-        canvas = applyScatteredWatermark(canvas, SECRET_CHARS, watermarkFontSize);
+        canvas = applyScatteredWatermark(canvas, SECRET_CHARS, watermarkSizePercent);
       }
       
       const blob = await compressToTargetSize(canvas, targetKB);
@@ -367,8 +369,8 @@ async function applyStamp(canvas, stampImg) {
   return canvas;
 }
 
-// تابع اعمال حروف پراکنده با قابلیت محاسبه میانگین رنگ تصویر و سایز دلخواه
-function applyScatteredWatermark(canvas, textArray, fontSize) {
+// تابع اعمال حروف پراکنده: استفاده از میانگین رنگ پس‌زمینه بدون تغییر تیرگی، و تعیین سایز بر اساس درصد عرض
+function applyScatteredWatermark(canvas, textArray, sizePercent) {
   const ctx = canvas.getContext('2d');
   const w = canvas.width;
   const h = canvas.height;
@@ -381,13 +383,14 @@ function applyScatteredWatermark(canvas, textArray, fontSize) {
   tempCtx.drawImage(canvas, 0, 0, 1, 1);
   const pixelData = tempCtx.getImageData(0, 0, 1, 1).data;
   
-  // 2. تیره کردن رنگ به دست آمده به میزان 10 درصد
-  const r = Math.max(0, Math.floor(pixelData[0] * 0.9));
-  const g = Math.max(0, Math.floor(pixelData[1] * 0.9));
-  const b = Math.max(0, Math.floor(pixelData[2] * 0.9));
-  
-  // تنظیم رنگ نهایی (بدون شفافیت، رنگ دقیقاً 10 درصد تیره‌تر از زمینه است)
+  // 2. تعیین رنگ واترمارک دقیقاً معادل میانگین رنگ زمینه
+  const r = pixelData[0];
+  const g = pixelData[1];
+  const b = pixelData[2];
   ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+  
+  // 3. محاسبه سایز فونت بر اساس درصد از عرض تصویر
+  const fontSize = (w * sizePercent) / 100;
   ctx.font = `${fontSize}px Arial`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
