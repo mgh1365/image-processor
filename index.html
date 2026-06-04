@@ -3,65 +3,143 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>پردازش تصویر</title>
+  <title>پردازش تصویر مینیمال</title>
+  
+  <!-- Cropper.js CSS -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="container">
-    <h1>پردازش تصویر</h1>
 
-    <section class="card">
-      <h2>انتخاب تصاویر</h2>
-      <input type="file" id="fileInput" accept="image/*" multiple />
+  <header class="top-bar">
+    <h1>پردازشگر تصویر</h1>
+    <div class="header-actions">
+      <button class="btn secondary-btn" id="clearBtnTop">🗑️ پاک کردن لیست</button>
+      <button class="btn primary-btn" id="processBtnTop">پردازش و دانلود</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card file-upload-section">
+      <div class="upload-area">
+        <input type="file" id="fileInput" accept="image/*" multiple />
+        <p>برای انتخاب کلیک کنید یا فایل‌ها را اینجا بکشید</p>
+      </div>
+      <div id="uploadStatus" class="status-text"></div>
     </section>
 
-    <section class="card">
-      <h2>تغییر اندازه (مربعی)</h2>
-      <label>اندازه (سانتی‌متر):
-        <input type="number" id="sizeInput" value="15" min="1" max="100" step="0.5" />
-      </label>
-      <label>DPI:
-        <input type="number" id="dpiInput" value="96" min="72" max="300" step="1" />
-      </label>
+    <!-- بخش تنظیمات آکاردئونی -->
+    <details class="card settings-accordion">
+      <summary class="accordion-summary">
+        <span class="summary-title">⚙️ تنظیمات پردازش (ابعاد، حجم، حاشیه، واترمارک)</span>
+        <span class="summary-icon">▼</span>
+      </summary>
+      
+      <div class="settings-grid">
+        <section class="nested-card">
+          <h2>ابعاد و رزولوشن</h2>
+          <div class="input-group">
+            <label>اندازه نهایی (cm)</label>
+            <input type="number" id="sizeInput" value="15" min="1" max="100" step="0.5" />
+          </div>
+          <div class="input-group">
+            <label>رزولوشن (DPI)</label>
+            <input type="number" id="dpiInput" value="150" min="72" max="300" step="1" />
+          </div>
+        </section>
+
+        <section class="nested-card">
+          <h2>فشرده‌سازی</h2>
+          <div class="input-group">
+            <label>حجم هدف (KB)</label>
+            <input type="number" id="targetSizeInput" value="200" min="10" max="5000" step="10" />
+          </div>
+        </section>
+
+        <section class="nested-card">
+          <h2>حاشیه و بوم</h2>
+          <div class="input-group">
+            <label>ضخامت حاشیه (px)</label>
+            <input type="number" id="borderWidthInput" value="2" min="0" max="50" step="1" />
+          </div>
+          <div class="input-group">
+            <label>توسعه بوم (px)</label>
+            <input type="number" id="canvasExpandInput" value="3" min="0" max="50" step="1" />
+          </div>
+          <div class="input-group">
+            <label>رنگ حاشیه</label>
+            <input type="color" id="borderColorInput" value="#000000" />
+          </div>
+        </section>
+
+        <section class="nested-card">
+          <h2>واترمارک</h2>
+          <label class="checkbox-label">
+            <input type="checkbox" id="stampEnabledInput" checked />
+            <span>اعمال مهر (assets/stamp.png)</span>
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="watermarkEnabledInput" checked />
+            <span>اعمال حروف مخفی پراکنده (n o r u z k h a n)</span>
+          </label>
+        </section>
+      </div>
+    </details>
+
+    <!-- لیست پیش‌نمایش و نام‌گذاری -->
+    <section id="fileListCard" class="card" style="display: none;">
+      <h2>لیست تصاویر و نام‌گذاری</h2>
+      <div id="fileListContainer"></div>
     </section>
 
-    <section class="card">
-      <h2>فشرده‌سازی</h2>
-      <label>حجم هدف (کیلوبایت):
-        <input type="number" id="targetSizeInput" value="200" min="10" max="5000" step="10" />
-      </label>
-    </section>
+    <div class="bottom-action-container">
+      <div class="bottom-action-buttons">
+        <button class="btn secondary-btn" id="clearBtnBottom">🗑️ پاک کردن لیست</button>
+        <button class="btn primary-btn" id="processBtnBottom">پردازش و دانلود همه</button>
+      </div>
+      <div id="status" class="status-text"></div>
+    </div>
+  </main>
 
-    <section class="card">
-      <h2>حاشیه</h2>
-      <label>ضخامت حاشیه (پیکسل):
-        <input type="number" id="borderWidthInput" value="5" min="0" max="50" step="1" />
-      </label>
-      <label>رنگ حاشیه:
-        <input type="color" id="borderColorInput" value="#000000" />
-      </label>
-      <label>
-        <input type="checkbox" id="canvasExpandInput" checked />
-        توسعه ۲ پیکسلی بوم (سفید)
-      </label>
-    </section>
-
-    <section class="card">
-      <h2>مهر و واترمارک</h2>
-      <label>
-        <input type="checkbox" id="stampEnabledInput" checked />
-        اعمال مهر (assets/stamp.png)
-      </label>
-      <label>
-        <input type="checkbox" id="watermarkEnabledInput" checked />
-        اعمال حروف مخفی پراکنده (n o r u z k h a n)
-      </label>
-    </section>
-
-    <button id="processBtn">پردازش و دانلود</button>
-    <div id="status"></div>
+  <!-- Modal برای کراپ و ویرایش اولیه -->
+  <div id="cropModal" class="modal" style="display: none;">
+    <div class="modal-content-large">
+      <div class="modal-header">
+        <h2 id="cropModalTitle">تنظیمات اولیه تصویر</h2>
+        <p id="cropModalText">کادر مربع را تنظیم کنید و تصویر را ویرایش کنید.</p>
+      </div>
+      <div class="editor-body">
+        <div class="crop-container">
+          <img id="cropImage" src="" alt="برای برش" />
+        </div>
+        <div class="editor-controls">
+          <h3>تنظیمات تصویر</h3>
+          <div class="control-group">
+            <label>چرخش: <span id="rotationValue">0</span>°</label>
+            <input type="range" id="rotationSlider" min="-180" max="180" value="0" step="1" />
+          </div>
+          <div class="control-group">
+            <label>روشنایی: <span id="brightnessValue">100</span>%</label>
+            <input type="range" id="brightnessSlider" min="0" max="200" value="100" step="1" />
+          </div>
+          <div class="control-group">
+            <label>کنتراست: <span id="contrastValue">100</span>%</label>
+            <input type="range" id="contrastSlider" min="0" max="200" value="100" step="1" />
+          </div>
+           <div class="control-group">
+            <label>اشباع رنگ: <span id="saturateValue">100</span>%</label>
+            <input type="range" id="saturateSlider" min="0" max="200" value="100" step="1" />
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="confirmCropBtn" class="btn primary-btn">تایید و ادامه</button>
+      </div>
+    </div>
   </div>
 
-  <script src="renderer.js"></script>
+  <!-- Cropper.js JS -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+  <script src="renderer.js"></scri>
 </body>
 </html>
