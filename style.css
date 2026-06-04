@@ -1,0 +1,151 @@
+* { box-sizing: border-box; font-family: sans-serif; }
+
+body {
+  margin: 0;
+  background: #f5f7fb;
+  color: #1a1a1a;
+}
+
+.container {
+  max-width: 1020px;
+  margin: 20px auto;
+  padding: 0 12px;
+}
+
+h1 {
+  margin: 0 0 12px;
+}
+
+h2 {
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+
+.panel {
+  background: #fff;
+  border: 1px solid #dde3ee;
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.dropzone {
+  border: 2px dashed #9eb3d1;
+  border-radius: 10px;
+  padding: 26px;
+  text-align: center;
+  color: #4f6484;
+  background: #f8fbff;
+  margin-bottom: 10px;
+  transition: .15s;
+  user-select: none;
+}
+
+.dropzone.active {
+  border-color: #2f7cf6;
+  background: #eef5ff;
+  color: #245ec0;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 720px) {
+  .grid2 { grid-template-columns: 1fr; }
+}
+
+label {
+  display: block;
+  margin: 8px 0;
+  font-size: 14px;
+}
+
+input[type="text"],
+input[type="number"] {
+  width: 100%;
+  padding: 9px;
+  border-radius: 8px;
+  border: 1px solid #cdd7e8;
+  outline: none;
+  background: #fff;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus {
+  border-color: #2f7cf6;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+button {
+  border: 1px solid #cdd7e8;
+  background: #fff;
+  padding: 9px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #f8fbff;
+}
+
+button:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: #2f7cf6;
+  color: #fff;
+  border-color: #2f7cf6;
+}
+
+button.primary:hover {
+  background: #266ce0;
+}
+
+button.secondary {
+  background: #f5f7fb;
+}
+
+#fileList {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid #edf1f8;
+  border-radius: 8px;
+  background: #fcfdff;
+}
+
+#fileList li {
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+#log {
+  background: #0d1117;
+  color: #d6e2ff;
+  border-radius: 10px;
+  padding: 10px;
+  min-height: 190px;
+  white-space: pre-wrap;
+  line-height: 1.6;
+  overflow: auto;
+  border: 1px solid #1f2937;
+}
