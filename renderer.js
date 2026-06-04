@@ -1,11 +1,24 @@
 /**
  * Image Processing — Web App (GitHub Pages)
- * مهر: پایین چپ، عرض max 25% عرض تصویر، فاصله 2.5% از گوشه
  */
 
 const STAMP_PATH = 'assets/stamp.png';
 
-// ——— helpers ———
+// آرایه‌ای برای نگهداری تصاویر آماده پردازش (فایل‌های اصلی یا کراپ شده)
+let readyImages = []; 
+// صف تصاویری که نیاز به کراپ دارند
+let cropQueue = [];
+let currentCropIndex = 0;
+let cropperInstance = null;
+
+// المان‌های مربوط به کراپ
+const fileInput = document.getElementById('fileInput');
+const cropModal = document.getElementById('cropModal');
+const cropImage = document.getElementById('cropImage');
+const confirmCropBtn = document.getElementById('confirmCropBtn');
+const uploadStatus = document.getElementById('uploadStatus');
+
+// ——— Helpers ———
 
 function cmToPx(cm, dpi) {
   return Math.round((cm / 2.54) * dpi);
@@ -21,19 +34,99 @@ function loadImage(src) {
   });
 }
 
-function fileToDataURL(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = e => resolve(e.target.result);
-    reader.onerror = () => reject(new Error('خواندن فایل ناموفق'));
-    reader.readAsDataURL(file);
-  });
+function setStatus(msg) {
+  document.getElementById('status').textContent = msg;
 }
 
-/**
- * تغییر اندازه به مربع با حفظ نسبت تصویر (letterbox با پس‌زمینه سفید)
- */
+function setUploadStatus(msg) {
+  uploadStatus.textContent = msg;
+}
+
+// ——— Crop Logic ———
+
+fileInput.addEventListener('change', async (e) => {
+  const files = e.target.files;
+  if (!files.length) return;
+
+  setUploadStatus('در حال بررسی ابعاد تصاویر...');
+  
+  // پاکسازی وضعیت قبلی
+  readyImages.forEach(item => URL.revokeObjectURL(item.blobUrl));
+  readyImages = [];
+  cropQueue = [];
+  currentCropIndex = 0;
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      const img = await loadImage(objectUrl);
+      // بررسی مربع بودن
+      if (img.width !== img.height) {
+        cropQueue.push({ name: file.name, blobUrl: objectUrl });
+      } else {
+        readyImages.push({ name: file.name, blobUrl: objectUrl });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  processCropQueue();
+});
+
+function processCropQueue() {
+  if (currentCropIndex < cropQueue.length) {
+    const currentItem = cropQueue[currentCropIndex];
+    document.getElementById('cropModalText').textContent = `تصویر "${currentItem.name}" مربع نیست، لطفاً بخش مورد نظر را برای برش مشخص کنید.`;
+    
+    cropImage.src = currentItem.blobUrl;
+    cropModal.classList.remove('hidden');
+
+    // ایجاد نمونه جدید از Cropper
+    if (cropperInstance) cropperInstance.destroy();
+    
+    cropperInstance = new Cropper(cropImage, {
+      aspectRatio: 1, // اجبار به کادر مربعی
+      viewMode: 1,
+      dragMode: 'move',
+      autoCropArea: 1,
+      background: false,
+    });
+  } else {
+    // صف کراپ تمام شده است
+    cropModal.classList.add('hidden');
+    if (readyImages.length > 0) {
+      setUploadStatus(`تعداد ${readyImages.length} تصویر آماده پردازش است.`);
+    } else {
+      setUploadStatus('هیچ تصویری انتخاب نشده است.');
+    }
+  }
+}
+
+confirmCropBtn.addEventListener('click', () => {
+  if (!cropperInstance) return;
+
+  // دریافت بوم کراپ شده
+  const canvas = cropperInstance.getCroppedCanvas({ fillColor: '#fff' });
+  
+  canvas.toBlob((blob) => {
+    const currentItem = cropQueue[currentCropIndex];
+    // افزودن تصویر کراپ شده به لیست آماده‌ها
+    readyImages.push({
+      name: currentItem.name,
+      blobUrl: URL.createObjectURL(blob)
+    });
+
+    currentCropIndex++;
+    processCropQueue();
+  }, 'image/jpeg', 1.0);
+});
+
+// ——— Processing Functions ———
+
 function resizeToSquare(img, sizePx) {
+  // این تابع اکنون تصویر را دریافت می‌کند. اگر پیشتر کراپ شده باشد یا مربع باشد، فقط ریسایز می‌شود.
   const canvas = document.createElement('canvas');
   canvas.width = sizePx;
   canvas.height = sizePx;
@@ -52,14 +145,8 @@ function resizeToSquare(img, sizePx) {
   return canvas;
 }
 
-/**
- * اعمال حاشیه با border-radius=5 روی تصویر
- * + توسعه اختیاری بوم به رنگ سفید (مقدار دلخواه)
- */
 function applyBorder(srcCanvas, borderWidth, borderColor, expandValue) {
   const expand = expandValue > 0 ? expandValue : 0;
-
-  // اندازه canvas نهایی = تصویر + توسعه سفید اطراف
   const w = srcCanvas.width + expand * 2;
   const h = srcCanvas.height + expand * 2;
 
@@ -68,17 +155,12 @@ function applyBorder(srcCanvas, borderWidth, borderColor, expandValue) {
   canvas.height = h;
   const ctx = canvas.getContext('2d');
 
-  // پس‌زمینه سفید (توسعه بوم)
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, w, h);
-
-  // تصویر اصلی
   ctx.drawImage(srcCanvas, expand, expand);
 
-  // رسم حاشیه روی تصویر
   if (borderWidth > 0) {
     const r = 5;
-    // محاسبه دقیق موقعیت برای جلوگیری از برش خوردن گوشه‌ها (شیفت به اندازه نصف ضخامت)
     const bx = expand + (borderWidth / 2);
     const by = expand + (borderWidth / 2);
     const bw = srcCanvas.width - borderWidth;
@@ -106,11 +188,6 @@ function applyBorder(srcCanvas, borderWidth, borderColor, expandValue) {
   return canvas;
 }
 
-/**
- * اعمال مهر در گوشه پایین چپ
- * عرض مهر = min(stampNaturalWidth, 25% عرض canvas)
- * فاصله از گوشه = 2.5% عرض canvas
- */
 async function applyStamp(canvas, stampImg) {
   const ctx = canvas.getContext('2d');
   const w = canvas.width;
@@ -120,7 +197,7 @@ async function applyStamp(canvas, stampImg) {
   const stampW = Math.min(stampImg.naturalWidth, maxStampW);
   const stampH = Math.round((stampImg.naturalHeight / stampImg.naturalWidth) * stampW);
 
-  const margin = Math.round(w * 0.025);  // 2.5% 
+  const margin = Math.round(w * 0.025);
   const sx = margin;
   const sy = h - stampH - margin;
 
@@ -128,23 +205,15 @@ async function applyStamp(canvas, stampImg) {
   return canvas;
 }
 
-/**
- * فشرده‌سازی با جستجوی دودویی برای رسیدن به حجم هدف (KB)
- */
 async function compressToTargetSize(canvas, targetKB) {
   const targetBytes = targetKB * 1024;
-
   const pngBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/png'));
-  if (pngBlob.size <= targetBytes) {
-    return pngBlob;
-  }
+  if (pngBlob.size <= targetBytes) return pngBlob;
 
   let lo = 0.01, hi = 0.99, best = null;
   for (let i = 0; i < 20; i++) {
     const mid = (lo + hi) / 2;
-    const blob = await new Promise(res =>
-      canvas.toBlob(b => res(b), 'image/jpeg', mid)
-    );
+    const blob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', mid));
     if (blob.size <= targetBytes) {
       best = blob;
       lo = mid;
@@ -154,20 +223,16 @@ async function compressToTargetSize(canvas, targetKB) {
   }
 
   if (!best) {
-    best = await new Promise(res =>
-      canvas.toBlob(b => res(b), 'image/jpeg', 0.01)
-    );
+    best = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', 0.01));
   }
-
   return best;
 }
 
-// ——— main ———
+// ——— Main Execution ———
 
-document.getElementById('processBtn').addEventListener('click', async () => {
-  const files = document.getElementById('fileInput').files;
-  if (!files.length) {
-    setStatus('لطفاً ابتدا تصاویر را انتخاب کنید.');
+async function startProcessing() {
+  if (!readyImages.length) {
+    setStatus('لطفاً ابتدا تصاویر را انتخاب و در صورت نیاز کراپ کنید.');
     return;
   }
 
@@ -190,19 +255,18 @@ document.getElementById('processBtn').addEventListener('click', async () => {
     }
   }
 
-  setStatus(`در حال پردازش ۰ از ${files.length}...`);
+  setStatus(`در حال پردازش ۰ از ${readyImages.length}...`);
 
-  for (let i = 0; i < files.length; i++) {
-    setStatus(`در حال پردازش ${i + 1} از ${files.length}...`);
+  for (let i = 0; i < readyImages.length; i++) {
+    setStatus(`در حال پردازش ${i + 1} از ${readyImages.length}...`);
 
     try {
-      const dataURL = await fileToDataURL(files[i]);
-      const img = await loadImage(dataURL);
+      const img = await loadImage(readyImages[i].blobUrl);
 
-      // ۱. تغییر اندازه
+      // ۱. تغییر اندازه نهایی
       let canvas = resizeToSquare(img, sizePx);
 
-      // ۲. حاشیه (روی تصویر رسم می‌شه)
+      // ۲. حاشیه
       canvas = applyBorder(canvas, borderW, borderC, canvasEx);
 
       // ۳. مهر
@@ -215,7 +279,7 @@ document.getElementById('processBtn').addEventListener('click', async () => {
 
       // ۵. دانلود
       const ext  = blob.type === 'image/jpeg' ? 'jpg' : 'png';
-      const name = files[i].name.replace(/\.[^/.]+$/, '') + '_processed.' + ext;
+      const name = readyImages[i].name.replace(/\.[^/.]+$/, '') + '_processed.' + ext;
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href = url;
@@ -225,13 +289,13 @@ document.getElementById('processBtn').addEventListener('click', async () => {
 
     } catch (err) {
       console.error(err);
-      setStatus(`❌ خطا در پردازش فایل ${files[i].name}: ${err.message}`);
+      setStatus(`❌ خطا در پردازش فایل ${readyImages[i].name}: ${err.message}`);
     }
   }
 
-  setStatus(`✅ پردازش ${files.length} تصویر کامل شد.`);
-});
-
-function setStatus(msg) {
-  document.getElementById('status').textContent = msg;
+  setStatus(`✅ پردازش ${readyImages.length} تصویر کامل شد.`);
 }
+
+// اتصال هر دو دکمه اجرا (بالا و پایین) به تابع پردازش
+document.getElementById('processBtnTop').addEventListener('click', startProcessing);
+document.getElementById('processBtnBottom').addEventListener('click', startProcessing);
