@@ -5,244 +5,6 @@ const sharp = require('sharp');
 
 let win;
 
-/* ------------------------------ UI HTML ------------------------------ */
-const HTML = `
-<!doctype html>
-<html lang="fa">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Batch Image Processor</title>
-  <style>
-    * { box-sizing: border-box; font-family: sans-serif; }
-    body { margin: 0; background: #f5f7fb; color: #1a1a1a; }
-    .container { max-width: 1020px; margin: 20px auto; padding: 0 12px; }
-    h1 { margin-bottom: 12px; }
-    .panel { background: #fff; border: 1px solid #dde3ee; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
-    .dropzone {
-      border: 2px dashed #9eb3d1; border-radius: 10px; padding: 26px;
-      text-align: center; color: #4f6484; background: #f8fbff; margin-bottom: 10px;
-    }
-    .dropzone.active { border-color: #2f7cf6; background: #eef5ff; }
-    .row { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
-    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    label { display: block; margin: 8px 0; font-size: 14px; }
-    input[type="text"], input[type="number"] {
-      width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #cdd7e8;
-    }
-    .check { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
-    button {
-      border: 1px solid #cdd7e8; background: #fff; padding: 9px 12px;
-      border-radius: 8px; cursor: pointer;
-    }
-    button.primary { background: #2f7cf6; color: #fff; border-color: #2f7cf6; }
-    button.secondary { background: #f5f7fb; }
-    #fileList { margin: 8px 0 0; padding-left: 18px; max-height: 180px; overflow: auto; }
-    #log {
-      background: #0d1117; color: #d6e2ff; border-radius: 10px;
-      padding: 10px; min-height: 170px; white-space: pre-wrap; line-height: 1.5;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>پردازش دسته‌ای تصاویر</h1>
-
-    <section class="panel">
-      <div id="dropZone" class="dropzone">فایل‌ها را اینجا رها کنید</div>
-      <div class="row">
-        <button id="btnSelect">Select Files</button>
-        <button id="btnClear" class="secondary">Clear List</button>
-      </div>
-      <ul id="fileList"></ul>
-    </section>
-
-    <section class="panel">
-      <h2>تنظیمات</h2>
-
-      <label class="check">
-        <input type="checkbox" id="enableBorder" checked />
-        افزودن حاشیه (2px مشکی + گوشه 5px + بوم سفید 5px)
-      </label>
-
-      <label class="check">
-        <input type="checkbox" id="enableStamp" checked />
-        افزودن مهر
-      </label>
-
-      <div class="row">
-        <input id="stampPath" type="text" placeholder="assets/stamp.png" />
-        <button id="btnStamp" class="secondary">Choose Stamp</button>
-      </div>
-
-      <label class="check">
-        <input type="checkbox" id="enableCompress" checked />
-        فشرده‌سازی تا حجم هدف (KB)
-      </label>
-
-      <div class="grid2">
-        <label>
-          حجم هدف (KB)
-          <input id="targetKB" type="number" min="1" max="10000" step="0.1" value="350" />
-        </label>
-        <label>
-          عرض هدف (cm)
-          <input id="targetWidthCm" type="number" min="1" step="0.1" value="15" />
-        </label>
-      </div>
-
-      <label class="check">
-        <input type="checkbox" id="openOutputs" checked />
-        بعد از اتمام، خروجی‌ها باز شوند
-      </label>
-
-      <div class="row">
-        <button id="btnRun" class="primary">شروع پردازش</button>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2>Log</h2>
-      <pre id="log"></pre>
-    </section>
-  </div>
-
-  <script>
-    const { ipcRenderer } = require('electron');
-
-    const dropZone = document.getElementById('dropZone');
-    const btnSelect = document.getElementById('btnSelect');
-    const btnClear = document.getElementById('btnClear');
-    const fileListEl = document.getElementById('fileList');
-
-    const enableBorderEl = document.getElementById('enableBorder');
-    const enableStampEl = document.getElementById('enableStamp');
-    const enableCompressEl = document.getElementById('enableCompress');
-    const targetKBEl = document.getElementById('targetKB');
-    const targetWidthCmEl = document.getElementById('targetWidthCm');
-    const openOutputsEl = document.getElementById('openOutputs');
-    const stampPathEl = document.getElementById('stampPath');
-    const btnStamp = document.getElementById('btnStamp');
-    const btnRun = document.getElementById('btnRun');
-    const logEl = document.getElementById('log');
-
-    let files = [];
-
-    function log(msg) {
-      logEl.textContent += msg + '\\n';
-      logEl.scrollTop = logEl.scrollHeight;
-    }
-
-    function renderFiles() {
-      fileListEl.innerHTML = '';
-      files.forEach((p) => {
-        const li = document.createElement('li');
-        li.textContent = p;
-        fileListEl.appendChild(li);
-      });
-    }
-
-    function addFiles(paths) {
-      const set = new Set(files);
-      (paths || []).forEach((p) => {
-        if (p && typeof p === 'string') set.add(p.trim());
-      });
-      files = [...set].filter(Boolean);
-      renderFiles();
-    }
-
-    ['dragenter', 'dragover'].forEach((ev) => {
-      dropZone.addEventListener(ev, (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dropZone.classList.add('active');
-      });
-    });
-
-    ['dragleave', 'drop'].forEach((ev) => {
-      dropZone.addEventListener(ev, (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dropZone.classList.remove('active');
-      });
-    });
-
-    dropZone.addEventListener('drop', (e) => {
-      const arr = [];
-      for (const f of e.dataTransfer.files) {
-        if (f.path) arr.push(f.path);
-      }
-      addFiles(arr);
-      log('+ ' + arr.length + ' فایل اضافه شد (Drag & Drop).');
-    });
-
-    btnSelect.addEventListener('click', async () => {
-      const selected = await ipcRenderer.invoke('select-files');
-      addFiles(selected);
-      log('+ ' + (selected || []).length + ' فایل اضافه شد (Select).');
-    });
-
-    btnClear.addEventListener('click', () => {
-      files = [];
-      renderFiles();
-      log('لیست فایل‌ها پاک شد.');
-    });
-
-    btnStamp.addEventListener('click', async () => {
-      const p = await ipcRenderer.invoke('pick-stamp');
-      if (p) stampPathEl.value = p;
-    });
-
-    btnRun.addEventListener('click', async () => {
-      if (!files.length) {
-        log('هیچ فایلی انتخاب نشده.');
-        return;
-      }
-
-      btnRun.disabled = true;
-      log('شروع پردازش...');
-
-      try {
-        const payload = {
-          filePaths: files,
-          enableBorder: enableBorderEl.checked,
-          enableStamp: enableStampEl.checked,
-          enableCompress: enableCompressEl.checked,
-          targetKB: Number(targetKBEl.value || 350),
-          targetWidthCm: Number(targetWidthCmEl.value || 15),
-          openOutputs: openOutputsEl.checked,
-          stampPath: stampPathEl.value.trim()
-        };
-
-        const out = await ipcRenderer.invoke('process-images', payload);
-
-        let ok = 0, fail = 0;
-        for (const r of out) {
-          if (r.ok) {
-            ok++;
-            log('✓ ' + r.output + ' | size=' + r.sizeKB.toFixed(1) + 'KB | q=' + r.quality + (r.scaleApplied ? (' | scale=' + r.scaleApplied) : ''));
-          } else {
-            fail++;
-            log('✗ ' + r.input + ' -> ' + r.error);
-          }
-        }
-
-        log('اتمام. موفق: ' + ok + ' | ناموفق: ' + fail);
-        alert('اتمام پردازش\\nموفق: ' + ok + '\\nناموفق: ' + fail);
-      } catch (e) {
-        log('خطا: ' + (e.message || e));
-        alert('خطا: ' + (e.message || e));
-      } finally {
-        btnRun.disabled = false;
-      }
-    });
-  </script>
-</body>
-</html>
-`;
-
-/* ------------------------------ Helpers ------------------------------ */
-
 function createWindow() {
   win = new BrowserWindow({
     width: 1180,
@@ -253,7 +15,7 @@ function createWindow() {
     }
   });
 
-  win.loadURL('data:text/html;charset=UTF-8,' + encodeURIComponent(HTML));
+  win.loadFile(path.join(__dirname, 'index.html'));
 }
 
 function nowNameBase() {
@@ -267,12 +29,7 @@ function nowNameBase() {
 }
 
 async function buildBaseImageBuffer(inputPath, opts) {
-  const {
-    enableBorder,
-    enableStamp,
-    targetWidthCm,
-    stampPath
-  } = opts;
+  const { enableBorder, enableStamp, targetWidthCm, stampPath } = opts;
 
   let pipeline = sharp(inputPath, { failOn: 'none' }).rotate();
   const meta = await pipeline.metadata();
@@ -281,7 +38,7 @@ async function buildBaseImageBuffer(inputPath, opts) {
   const dpi = (meta.density && Number.isFinite(meta.density) && meta.density > 0) ? meta.density : 300;
   const targetWidthPx = Math.round((Number(targetWidthCm || 15) / 2.54) * dpi);
 
-  // Only downscale, never upscale
+  // فقط کوچک‌سازی، نه بزرگ‌سازی
   if (meta.width > targetWidthPx) {
     pipeline = pipeline.resize({ width: targetWidthPx, withoutEnlargement: true });
   }
@@ -315,7 +72,7 @@ async function buildBaseImageBuffer(inputPath, opts) {
 
     const stampW = Math.round(fw * 0.25);
 
-    // فاصله مهر نصف شد: قبلاً 10%، الان 5%
+    // فاصله نصف شد: 5% عرض
     const margin = Math.round(fw * 0.05);
 
     const stampBuf = await sharp(stampPath)
@@ -324,7 +81,6 @@ async function buildBaseImageBuffer(inputPath, opts) {
       .toBuffer();
 
     const sm = await sharp(stampBuf).metadata();
-    const sw = sm.width || 0;
     const sh = sm.height || 0;
 
     const left = Math.max(0, margin);
@@ -333,15 +89,13 @@ async function buildBaseImageBuffer(inputPath, opts) {
     pipeline = pipeline.composite([{ input: stampBuf, left, top }]);
   }
 
-  // خروجی پایه PNG تا مرحله نهایی فشرده‌سازی JPEG دقیق‌تر کنترل شود
   return await pipeline.png().toBuffer();
 }
 
 async function compressToTarget(baseBuffer, targetBytes) {
-  // 1) تلاش با تغییر کیفیت (binary search)
+  // مرحله 1: باینری سرچ کیفیت
   let low = 1, high = 100;
   let bestUnder = null;
-  let bestOver = null;
 
   for (let i = 0; i < 10; i++) {
     const q = Math.floor((low + high) / 2);
@@ -349,9 +103,8 @@ async function compressToTarget(baseBuffer, targetBytes) {
 
     if (buf.length <= targetBytes) {
       bestUnder = { buf, q };
-      low = q + 1; // کیفیت بالاتر ولی هنوز زیر هدف
+      low = q + 1;
     } else {
-      bestOver = { buf, q };
       high = q - 1;
     }
   }
@@ -360,16 +113,15 @@ async function compressToTarget(baseBuffer, targetBytes) {
     return { buf: bestUnder.buf, quality: bestUnder.q, scaleApplied: 1.0 };
   }
 
-  // 2) اگر حتی کیفیت 1 هم بالاست => کاهش ابعاد مرحله‌ای + دوباره binary search کیفیت
+  // مرحله 2: اگر هنوز بالاست، کاهش ابعاد مرحله‌ای + باینری سرچ کیفیت
   const scaleSteps = [0.97, 0.94, 0.91, 0.88, 0.85, 0.82, 0.79, 0.76, 0.73, 0.70, 0.67, 0.64, 0.61, 0.58, 0.55, 0.52, 0.50];
-
   const meta = await sharp(baseBuffer).metadata();
-  const origW = meta.width || 0;
-  const origH = meta.height || 0;
+  const ow = meta.width || 0;
+  const oh = meta.height || 0;
 
   for (const s of scaleSteps) {
-    const w = Math.max(120, Math.round(origW * s));
-    const h = Math.max(120, Math.round(origH * s));
+    const w = Math.max(120, Math.round(ow * s));
+    const h = Math.max(120, Math.round(oh * s));
 
     const resizedBase = await sharp(baseBuffer)
       .resize({ width: w, height: h, fit: 'fill' })
@@ -378,9 +130,11 @@ async function compressToTarget(baseBuffer, targetBytes) {
 
     let l = 1, r = 100;
     let localBest = null;
+
     for (let i = 0; i < 10; i++) {
       const q = Math.floor((l + r) / 2);
       const b = await sharp(resizedBase).jpeg({ quality: q, mozjpeg: true }).toBuffer();
+
       if (b.length <= targetBytes) {
         localBest = { buf: b, q };
         l = q + 1;
@@ -394,16 +148,16 @@ async function compressToTarget(baseBuffer, targetBytes) {
     }
   }
 
-  // 3) fallback نهایی (اگر هدف خیلی خیلی کم باشد)
+  // مرحله 3: fallback
   const fallback = await sharp(baseBuffer)
-    .resize({ width: Math.max(100, Math.round(origW * 0.45)) })
+    .resize({ width: Math.max(100, Math.round((ow || 1000) * 0.45)) })
     .jpeg({ quality: 1, mozjpeg: true })
     .toBuffer();
 
   return { buf: fallback, quality: 1, scaleApplied: 0.45 };
 }
 
-/* ------------------------------ IPC ------------------------------ */
+/* ---------------- IPC ---------------- */
 
 ipcMain.handle('select-files', async () => {
   const res = await dialog.showOpenDialog(win, {
@@ -449,10 +203,10 @@ ipcMain.handle('process-images', async (_, payload) => {
 
   for (const inputPath of filePaths) {
     try {
-      const inputDir = path.dirname(inputPath);
+      const dir = path.dirname(inputPath);
       const ext = path.extname(inputPath);
       const base = path.basename(inputPath, ext);
-      const outputPath = path.join(inputDir, `${base}_${nowNameBase()}.jpg`);
+      const outputPath = path.join(dir, `${base}_${nowNameBase()}.jpg`);
 
       const baseBuffer = await buildBaseImageBuffer(inputPath, {
         enableBorder: !!enableBorder,
@@ -461,13 +215,15 @@ ipcMain.handle('process-images', async (_, payload) => {
         stampPath: finalStamp
       });
 
-      let finalBuf, usedQuality = 95, scaleApplied = 1.0;
+      let finalBuf;
+      let usedQuality = 95;
+      let scaleApplied = 1.0;
 
       if (enableCompress) {
-        const comp = await compressToTarget(baseBuffer, targetBytes);
-        finalBuf = comp.buf;
-        usedQuality = comp.quality;
-        scaleApplied = comp.scaleApplied;
+        const c = await compressToTarget(baseBuffer, targetBytes);
+        finalBuf = c.buf;
+        usedQuality = c.quality;
+        scaleApplied = c.scaleApplied;
       } else {
         finalBuf = await sharp(baseBuffer).jpeg({ quality: 95, mozjpeg: true }).toBuffer();
       }
@@ -486,11 +242,7 @@ ipcMain.handle('process-images', async (_, payload) => {
 
       if (openOutputs) openList.push(outputPath);
     } catch (err) {
-      results.push({
-        input: inputPath,
-        ok: false,
-        error: err.message || String(err)
-      });
+      results.push({ input: inputPath, ok: false, error: err.message || String(err) });
     }
   }
 
@@ -503,7 +255,7 @@ ipcMain.handle('process-images', async (_, payload) => {
   return results;
 });
 
-/* ------------------------------ App ------------------------------ */
+/* ---------------- App lifecycle ---------------- */
 
 app.whenReady().then(createWindow);
 
