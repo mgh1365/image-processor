@@ -1,5 +1,5 @@
 /**
- * Image Processing — Web App (v3.1 with Editor Fix)
+ * Image Processing — Web App (v3.2 - Critical Fix for Editor Logic)
  */
 
 const STAMP_PATH = 'assets/stamp.png';
@@ -74,8 +74,9 @@ fileInput.addEventListener('change', async (e) => {
   const files = e.target.files;
   if (!files || files.length === 0) return;
 
-  setUploadStatus('در حال آماده‌سازی تصاویر...');
+  setUploadStatus('در حال آمادهسازی تصاویر...');
   
+  // Clean up previous state
   readyImages.forEach(item => URL.revokeObjectURL(item.blobUrl));
   readyImages = [];
   processQueue = [];
@@ -89,7 +90,7 @@ fileInput.addEventListener('change', async (e) => {
     processQueue.push({ originalName: file.name, blobUrl: objectUrl });
   }
   
-  fileInput.value = '';
+  fileInput.value = ''; // Allow re-selecting same files
   startNextInQueue();
 });
 
@@ -105,18 +106,19 @@ function startNextInQueue() {
 
     if (cropperInstance) cropperInstance.destroy();
 
-    // Use a ready event to ensure the image is loaded before applying filters
+    // The image must be loaded before Cropper is initialized
     cropImage.onload = () => {
-        cropperInstance = new Cropper(cropImage, {
-            aspectRatio: 1,
-            viewMode: 1,
-            dragMode: 'move',
-            autoCropArea: 1,
-            background: false,
-            ready: function () {
-                updateFilterPreview(); // Apply initial filter for preview
-            }
-        });
+      cropperInstance = new Cropper(cropImage, {
+        aspectRatio: 1,
+        viewMode: 1,
+        dragMode: 'move',
+        autoCropArea: 1,
+        background: false, // Make background transparent to see container bg
+        ready: function () {
+          // Apply initial filter values for visual preview
+          updateFilterPreview();
+        }
+      });
     };
   } else {
     cropModal.style.display = 'none';
@@ -138,11 +140,14 @@ function resetEditorControls() {
 
 function updateFilterPreview() {
   if (!cropperInstance || !cropperInstance.cropper) return;
-  const imageElementInsideCropper = cropperInstance.getImageData().$image;
-  if (!imageElementInsideCropper) return;
-
-  const filterString = `brightness(${brightnessSlider.value}%) contrast(${contrastSlider.value}%) saturate(${saturateSlider.value}%)`;
-  imageElementInsideCropper.style.filter = filterString;
+  
+  // Cropper.js v1.5.13 uses a child element for the image inside the canvas
+  const cropperImageElement = cropImage.nextElementSibling.querySelector('img');
+  
+  if (cropperImageElement) {
+    const filterString = `brightness(${brightnessSlider.value}%) contrast(${contrastSlider.value}%) saturate(${saturateSlider.value}%)`;
+    cropperImageElement.style.filter = filterString;
+  }
 }
 
 // Event listeners for editor controls
@@ -166,55 +171,27 @@ saturateSlider.addEventListener('input', (e) => {
   updateFilterPreview();
 });
 
-// --- THIS IS THE CRITICAL FIX ---
-async function getFilteredCroppedCanvas(sourceImage) {
-  // Get current cropper and editor data
-  const cropData = cropperInstance.getData();
-  const rotation = cropData.rotate;
-  const filterString = `brightness(${brightnessSlider.value}%) contrast(${contrastSlider.value}%) saturate(${saturateSlider.value}%)`;
-
-  // 1. Create a canvas to apply the FILTERS
-  const filteredCanvas = document.createElement('canvas');
-  const filteredCtx = filteredCanvas.getContext('2d');
-  filteredCanvas.width = sourceImage.naturalWidth;
-  filteredCanvas.height = sourceImage.naturalHeight;
-  filteredCtx.filter = filterString;
-  filteredCtx.drawImage(sourceImage, 0, 0);
-
-  // 2. Create the final canvas that will be ROTATED and CROPPED
-  const finalCanvas = document.createElement('canvas');
-  const finalCtx = finalCanvas.getContext('2d');
-  
-  const croppedData = cropperInstance.getCroppedCanvas({
-    fillColor: '#ffffff'
-  }).getContext('2d').getImageData(0,0,cropData.width,cropData.height);
-
-  finalCanvas.width = croppedData.width;
-  finalCanvas.height = croppedData.height;
-
-  finalCtx.fillStyle = '#fff'; // Set a background color
-  finalCtx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-  
-  // 3. Draw the filtered and rotated image onto the final canvas
-  finalCtx.translate(finalCanvas.width / 2, finalCanvas.height / 2);
-  finalCtx.rotate(rotation * Math.PI / 180);
-  finalCtx.drawImage(
-    filteredCanvas,
-    cropData.x, cropData.y, cropData.width, cropData.height,
-    -finalCanvas.width / 2, -finalCanvas.height / 2, cropData.width, cropData.height
-  );
-
-  return finalCanvas;
-}
-
 confirmCropBtn.addEventListener('click', async () => {
   if (!cropperInstance) return;
 
   const currentItem = processQueue[currentProcessIndex];
-  const sourceImage = await loadImage(currentItem.blobUrl);
   
-  // Get the canvas with all transformations applied
-  const finalCanvas = await getFilteredCroppedCanvas(sourceImage);
+  // Use Cropper's built-in getCroppedCanvas which respects rotation
+  const croppedCanvas = cropperInstance.getCroppedCanvas({
+    fillColor: '#ffffff'
+  });
+
+  // Now, draw the filtered image onto this rotated/cropped canvas
+  const finalCanvas = document.createElement('canvas');
+  const finalCtx = finalCanvas.getContext('2d');
+  finalCanvas.width = croppedCanvas.width;
+  finalCanvas.height = croppedCanvas.height;
+  
+  // Apply the CSS filters to the canvas context
+  finalCtx.filter = `brightness(${brightnessSlider.value}%) contrast(${contrastSlider.value}%) saturate(${saturateSlider.value}%)`;
+  
+  // Draw the result from cropper (which is already cropped and rotated)
+  finalCtx.drawImage(croppedCanvas, 0, 0);
 
   finalCanvas.toBlob((blob) => {
     readyImages.push({
@@ -258,7 +235,7 @@ function renderFileList() {
   });
 }
 
-// --- Final Processing Logic (Unchanged) ---
+// --- Final Processing Logic ---
 
 async function startProcessing() {
   if (!readyImages.length) {
@@ -325,7 +302,7 @@ function resizeToSquare(img, sizePx) {
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, sizePx, sizePx);
-  // No resizing needed, image from editor is already square
+  // Image from editor is already square, so a simple draw is enough.
   ctx.drawImage(img, 0, 0, sizePx, sizePx);
   return canvas;
 }
@@ -339,16 +316,10 @@ function applyBorder(srcCanvas, borderWidth, borderColor, expandValue) {
   ctx.fillRect(0, 0, w, h);
   ctx.drawImage(srcCanvas, expand, expand);
   if (borderWidth > 0) {
-    const r = 5, bx = expand + (borderWidth / 2), by = expand + (borderWidth / 2);
-    const bw = srcCanvas.width - borderWidth, bh = srcCanvas.height - borderWidth;
-    ctx.beginPath();
-    ctx.moveTo(bx + r, by); ctx.lineTo(bx + bw - r, by); ctx.quadraticCurveTo(bx + bw, by, bx + bw, by + r);
-    ctx.lineTo(bx + bw, by + bh - r); ctx.quadraticCurveTo(bx + bw, by + bh, bx + bw - r, by + bh);
-    ctx.lineTo(bx + r, by + bh); ctx.quadraticCurveTo(bx, by + bh, bx, by + bh - r);
-    ctx.lineTo(bx, by + r); ctx.quadraticCurveTo(bx, by, bx + r, by);
-    ctx.closePath();
-    ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = borderColor; ctx.lineWidth = borderWidth;
-    ctx.stroke();
+    const bx = expand, by = expand;
+    ctx.strokeStyle = borderColor; 
+    ctx.lineWidth = borderWidth;
+    ctx.strokeRect(bx + borderWidth / 2, by + borderWidth / 2, srcCanvas.width - borderWidth, srcCanvas.height - borderWidth);
   }
   return canvas;
 }
@@ -364,16 +335,27 @@ async function applyStamp(canvas, stampImg) {
 
 async function compressToTargetSize(canvas, targetKB) {
   const targetBytes = targetKB * 1024;
-  const pngBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/png'));
-  if (pngBlob.size <= targetBytes) return pngBlob;
-  let lo = 0.01, hi = 0.99, best = null;
-  for (let i = 0; i < 8; i++) { // Reduced iterations for speed
-    const mid = (lo + hi) / 2;
-    const blob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', mid));
-    if (blob.size <= targetBytes) { best = blob; lo = mid; } else { hi = mid; }
+  let quality = 0.9;
+  let currentBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', quality));
+
+  // Iteratively reduce quality
+  while (currentBlob.size > targetBytes && quality > 0.1) {
+    quality -= 0.1;
+    currentBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', quality));
   }
-  if (!best) best = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', 0.1));
-  return best;
+  
+  // If it's still too large, return the lowest quality version
+  if (currentBlob.size > targetBytes) {
+      currentBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', 0.1));
+  }
+
+  // If a PNG version would be smaller, use that
+  const pngBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/png'));
+  if (pngBlob.size < currentBlob.size) {
+    return pngBlob;
+  }
+
+  return currentBlob;
 }
 
 document.getElementById('processBtnTop').addEventListener('click', startProcessing);
