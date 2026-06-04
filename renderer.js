@@ -1,5 +1,5 @@
 /**
- * Image Processing — Web App (v3.4 - Fixes applied: Clear All, Live Filter, High-Res Stamp)
+ * Image Processing — Web App (v3.5 - Added Dynamic Font Size & Calculated Background Color for Watermark)
  */
 
 const STAMP_PATH = 'assets/stamp.png';
@@ -264,6 +264,7 @@ async function startProcessing() {
   const borderC = document.getElementById('borderColorInput').value;
   const doStamp = document.getElementById('stampEnabledInput').checked;
   const doWatermark = document.getElementById('watermarkEnabledInput') ? document.getElementById('watermarkEnabledInput').checked : false;
+  const watermarkFontSize = parseInt(document.getElementById('watermarkFontSizeInput').value) || 40;
 
   const sizePx = cmToPx(sizeCm, dpi);
   const timestampSuffix = getFormattedTimestamp();
@@ -286,9 +287,9 @@ async function startProcessing() {
       canvas = applyBorder(canvas, borderW, borderC, canvasEx);
       if (stampImg) canvas = await applyStamp(canvas, stampImg);
       
-      // اعمال واترمارک حروف پراکنده و مخفی
+      // اعمال واترمارک حروف پراکنده و مخفی با سایز دلخواه
       if (doWatermark) {
-        canvas = applyScatteredWatermark(canvas, SECRET_CHARS);
+        canvas = applyScatteredWatermark(canvas, SECRET_CHARS, watermarkFontSize);
       }
       
       const blob = await compressToTargetSize(canvas, targetKB);
@@ -366,25 +367,39 @@ async function applyStamp(canvas, stampImg) {
   return canvas;
 }
 
-// تابع اعمال حروف پراکنده
-function applyScatteredWatermark(canvas, textArray) {
+// تابع اعمال حروف پراکنده با قابلیت محاسبه میانگین رنگ تصویر و سایز دلخواه
+function applyScatteredWatermark(canvas, textArray, fontSize) {
   const ctx = canvas.getContext('2d');
   const w = canvas.width;
   const h = canvas.height;
   
-  // رنگ بسیار کم‌رنگ (اوپاسیتی 3 درصد)
-  ctx.fillStyle = 'rgba(128, 128, 128, 0.03)';
-  ctx.font = `${Math.floor(w * 0.05)}px Arial`;
+  // 1. محاسبه میانگین رنگ تصویر با یک ترفند سریع (رسم در 1 در 1 پیکسل)
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = 1;
+  tempCanvas.height = 1;
+  const tempCtx = tempCanvas.getContext('2d');
+  tempCtx.drawImage(canvas, 0, 0, 1, 1);
+  const pixelData = tempCtx.getImageData(0, 0, 1, 1).data;
+  
+  // 2. تیره کردن رنگ به دست آمده به میزان 10 درصد
+  const r = Math.max(0, Math.floor(pixelData[0] * 0.9));
+  const g = Math.max(0, Math.floor(pixelData[1] * 0.9));
+  const b = Math.max(0, Math.floor(pixelData[2] * 0.9));
+  
+  // تنظیم رنگ نهایی (بدون شفافیت، رنگ دقیقاً 10 درصد تیره‌تر از زمینه است)
+  ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+  ctx.font = `${fontSize}px Arial`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   
   textArray.forEach(char => {
+    // پراکندگی تصادفی در سطح بوم
     const rx = Math.random() * (w * 0.8) + (w * 0.1);
     const ry = Math.random() * (h * 0.8) + (h * 0.1);
     
     ctx.save();
     ctx.translate(rx, ry);
-    ctx.rotate((Math.random() - 0.5) * Math.PI / 2); 
+    ctx.rotate((Math.random() - 0.5) * Math.PI / 2); // چرخش تصادفی
     ctx.fillText(char, 0, 0);
     ctx.restore();
   });
