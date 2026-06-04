@@ -183,7 +183,7 @@ function resetEditorControls() {
   saturateSlider.value = 100;
   
   rotationValue.textContent = '0';
-  brightnessValutextContent = '100';
+  brightnessValue.textContent = '100';
   contrastValue.textContent = '100';
   saturateValue.textContent = '100';
 }
@@ -191,4 +191,234 @@ function resetEditorControls() {
 function updateFilterPreview() {
   // Target ALL images inside the Cropper container to ensure the crop box itself shows the filter
   const cropperImages = document.querySelectorAll('.cropper-container img');
-  const filterString = `brightness(${brightnessSlider.value}%) contrast(${${
+  const filterString = `brightness(${brightnessSlider.value}%) contrast(${contrastSlider.value}%) saturate(${saturateSlider.value}%)`;
+  
+  cropperImages.forEach(img => {
+    img.style.filter = filterString;
+  });
+}
+
+// Event listeners for editor controls
+rotationSlider.addEventListener('input', (e) => {
+  if (cropperInstance) {
+    cropperInstance.rotateTo(Number(e.target.value));
+    rotationValue.textContent = e.target.value;
+  }
+});
+
+brightnessSlider.addEventListener('input', (e) => {
+  brightnessValue.textContent = e.target.value;
+  updateFilterPreview();
+});
+contrastSlider.addEventListener('input', (e) => {
+  contrastValue.textContent = e.target.value;
+  updateFilterPreview();
+});
+saturateSlider.addEventListener('input', (e) => {
+  saturateValue.textContent = e.target.value;
+  updateFilterPreview();
+});
+
+confirmCropBtn.addEventListener('click', () => {
+  if (!cropperInstance) return;
+
+  const currentItem = processQueue[currentProcessIndex];
+  
+  const croppedCanvas = cropperInstance.getCroppedCanvas({
+    fillColor: '#ffffff',
+    imageSmoothingEnabled: true,
+    imageSmoothingQuality: 'high'
+  });
+
+  const finalCanvas = document.createElement('canvas');
+  finalCanvas.width = croppedCanvas.width;
+  finalCanvas.height = croppedCanvas.height;
+  const finalCtx = finalCanvas.getContext('2d');
+  
+  finalCtx.filter = `brightness(${brightnessSlider.value}%) contrast(${contrastSlider.value}%) saturate(${saturateSlider.value}%)`;
+  finalCtx.drawImage(croppedCanvas, 0, 0);
+
+  finalCanvas.toBlob((blob) => {
+    readyImages.push({
+      id: `img_${imageCounter++}`,
+      originalName: currentItem.originalName,
+      blobUrl: URL.createObjectURL(blob)
+    });
+
+    currentProcessIndex++;
+    startNextInQueue();
+  }, 'image/jpeg', 0.95);
+});
+
+function renderFileList() {
+  if (readyImages.length === 0) {
+    setUploadStatus('لیست تصاویر خالی است.');
+    return;
+  }
+  
+  setUploadStatus(`تعداد ${readyImages.length} تصویر در لیست آماده پردازش است.`);
+  fileListCard.style.display = 'block';
+  fileListContainer.innerHTML = '';
+
+  readyImages.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'file-item';
+
+    const thumb = document.createElement('img');
+    thumb.src = item.blobUrl;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = `nameInput_${item.id}`;
+    
+    const baseName = getBaseName(item.originalName);
+    input.placeholder = `نام دلخواه (پیش‌فرض: ${baseName})`;
+
+    row.appendChild(thumb);
+    row.appendChild(input);
+    fileListContainer.appendChild(row);
+  });
+}
+
+// --- Final Processing Logic ---
+async function startProcessing() {
+  if (!readyImages.length) {
+    setStatus('تصویری در لیست برای پردازش وجود ندارد.');
+    return;
+  }
+
+  const sizeCm = parseFloat(document.getElementById('sizeInput').value) || 15;
+  const dpi = parseInt(document.getElementById('dpiInput').value) || 150;
+  const targetKB = parseFloat(document.getElementById('targetSizeInput').value) || 200;
+  const borderW = parseInt(document.getElementById('borderWidthInput').value) || 0;
+  const canvasEx = parseInt(document.getElementById('canvasExpandInput').value) || 0;
+  const borderC = document.getElementById('borderColorInput').value;
+  const doStamp = document.getElementById('stampEnabledInput').checked;
+  const doWatermark = document.getElementById('watermarkEnabledInput').checked;
+
+  const sizePx = cmToPx(sizeCm, dpi);
+  const timestampSuffix = getFormattedTimestamp();
+
+  let stampImg = null;
+  if (doStamp) {
+    try { stampImg = await loadImage(STAMP_PATH); } 
+    catch { setStatus('⚠️ مهر یافت نشد - ادامه بدون مهر'); }
+  }
+
+  setStatus(`در حال پردازش...`);
+
+  for (let i = 0; i < readyImages.length; i++) {
+    const currentItem = readyImages[i];
+    setStatus(`در حال پردازش ${i + 1} از ${readyImages.length}...`);
+
+    try {
+      const img = await loadImage(currentItem.blobUrl);
+      let canvas = resizeToSquare(img, sizePx);
+      canvas = applyBorder(canvas, borderW, borderC, canvasEx);
+      
+      if (stampImg) canvas = await applyStamp(canvas, stampImg);
+      
+      // اعمال حروف مخفی در صورت فعال بودن
+      if (doWatermark) {
+        canvas = applyScatteredWatermark(canvas, SECRET_CHARS);
+      }
+      
+      const blob = await compressToTargetSize(canvas, targetKB);
+
+      const inputEl = document.getElementById(`nameInput_${currentItem.id}`);
+      let customName = inputEl && inputEl.value.trim() !== '' ? inputEl.value.trim() : getBaseName(currentItem.originalName);
+      
+      const ext = blob.type === 'image/jpeg' ? 'jpg' : 'png';
+      const finalFileName = `${customName}_${timestampSuffix}.${ext}`;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = finalFileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      setStatus(`❌ خطا در پردازش: ${err.message}`);
+    }
+  }
+  setStatus(`✅ عملیات کامل شد.`);
+}
+
+function resizeToSquare(img, sizePx) {
+  const canvas = document.createElement('canvas');
+  canvas.width = sizePx; canvas.height = sizePx;
+  const ctx = canvas.getContext('2d');
+  
+  // Highest quality image rendering for the main background
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, sizePx, sizePx);
+  ctx.drawImage(img, 0, 0, sizePx, sizePx);
+  return canvas;
+}
+
+function applyBorder(srcCanvas, borderWidth, borderColor, expandValue) {
+  const expand = expandValue > 0 ? expandValue : 0;
+  const w = srcCanvas.width + expand * 2, h = srcCanvas.height + expand * 2;
+  const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
+  
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  
+  canvas.width = w; canvas.height = h;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(srcCanvas, expand, expand);
+  if (borderWidth > 0) {
+    const bx = expand, by = expand;
+    ctx.strokeStyle = borderColor; 
+    ctx.lineWidth = borderWidth;
+    ctx.strokeRect(bx + borderWidth / 2, by + borderWidth / 2, srcCanvas.width - borderWidth, srcCanvas.height - borderWidth);
+  }
+  return canvas;
+}
+
+async function applyStamp(canvas, stampImg) {
+  const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
+  
+  // Ensure the highest quality rendering for the stamp/watermark
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  
+  const maxStampW = Math.round(w * 0.25), stampW = Math.min(stampImg.naturalWidth, maxStampW);
+  const stampH = Math.round((stampImg.naturalHeight / stampImg.naturalWidth) * stampW);
+  const margin = Math.round(w * 0.025), sx = margin, sy = h - stampH - margin;
+  
+  ctx.drawImage(stampImg, sx, sy, stampW, stampH);
+  return canvas;
+}
+
+async function compressToTargetSize(canvas, targetKB) {
+  const targetBytes = targetKB * 1024;
+  let quality = 0.9;
+  let currentBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', quality));
+
+  while (currentBlob.size > targetBytes && quality > 0.1) {
+    quality -= 0.1;
+    currentBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', quality));
+  }
+  
+  if (currentBlob.size > targetBytes) {
+      currentBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', 0.1));
+  }
+
+  const pngBlob = await new Promise(res => canvas.toBlob(b => res(b), 'image/png'));
+  if (pngBlob.size < currentBlob.size) {
+    return pngBlob;
+  }
+
+  return currentBlob;
+}
+
+document.getElementById('processBtnTop').addEventListener('click', startProcessing);
+document.getElementById('processBtnBottom').addEventListener('click', startProcessing);
