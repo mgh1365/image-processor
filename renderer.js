@@ -31,7 +31,7 @@ function fileToDataURL(file) {
 }
 
 /**
- * تغییر اندازه به مربع با حفظ نسبت تصویر (letterbox با배경 سفید)
+ * تغییر اندازه به مربع با حفظ نسبت تصویر (letterbox با پس‌زمینه سفید)
  */
 function resizeToSquare(img, sizePx) {
   const canvas = document.createElement('canvas');
@@ -173,4 +173,64 @@ document.getElementById('processBtn').addEventListener('click', async () => {
   const dpi        = parseInt(document.getElementById('dpiInput').value) || 96;
   const targetKB   = parseFloat(document.getElementById('targetSizeInput').value) || 200;
   const borderW    = parseInt(document.getElementById('borderWidthInput').value) || 0;
-  const borderC    = document.getElementById('borderColorInput
+  const borderC    = document.getElementById('borderColorInput').value;
+  const doExpand   = document.getElementById('canvasExpandInput').checked;
+  const doStamp    = document.getElementById('stampEnabledInput').checked;
+
+  const sizePx = cmToPx(sizeCm, dpi);
+
+  // بارگذاری مهر (یکبار)
+  let stampImg = null;
+  if (doStamp) {
+    try {
+      stampImg = await loadImage(STAMP_PATH);
+    } catch {
+      setStatus('⚠️ مهر بارگذاری نشد — ادامه بدون مهر');
+    }
+  }
+
+  setStatus(`در حال پردازش ۰ از ${files.length}...`);
+
+  for (let i = 0; i < files.length; i++) {
+    setStatus(`در حال پردازش ${i + 1} از ${files.length}...`);
+
+    try {
+      const dataURL = await fileToDataURL(files[i]);
+      const img = await loadImage(dataURL);
+
+      // ۱. تغییر اندازه
+      let canvas = resizeToSquare(img, sizePx);
+
+      // ۲. حاشیه
+      canvas = applyBorder(canvas, borderW, borderC, doExpand);
+
+      // ۳. مهر
+      if (stampImg) {
+        canvas = await applyStamp(canvas, stampImg);
+      }
+
+      // ۴. فشرده‌سازی
+      const blob = await compressToTargetSize(canvas, targetKB);
+
+      // ۵. دانلود
+      const ext  = blob.type === 'image/jpeg' ? 'jpg' : 'png';
+      const name = files[i].name.replace(/\.[^/.]+$/, '') + '_processed.' + ext;
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+
+    } catch (err) {
+      console.error(err);
+      setStatus(`❌ خطا در پردازش فایل ${files[i].name}: ${err.message}`);
+    }
+  }
+
+  setStatus(`✅ پردازش ${files.length} تصویر کامل شد.`);
+});
+
+function setStatus(msg) {
+  document.getElementById('status').textContent = msg;
+}
