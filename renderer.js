@@ -1,9 +1,11 @@
 /**
  * Image Processing — Web App (GitHub Pages)
- * شامل قابلیت جدید: واترمارک پراکنده و مخفی حروف تصادفی با میانگین رنگ تصویر
  */
 
 const STAMP_PATH = 'assets/stamp.png';
+
+// حروفی که قرار است مخفی شوند
+const SECRET_CHARS = ['n', 'o', 'r', 'u', 'z', 'k', 'h', 'a', 'n'];
 
 // ——— helpers ———
 
@@ -30,9 +32,6 @@ function fileToDataURL(file) {
   });
 }
 
-/**
- * تغییر اندازه به مربع با حفظ نسبت تصویر
- */
 function resizeToSquare(img, sizePx) {
   const canvas = document.createElement('canvas');
   canvas.width = sizePx;
@@ -52,9 +51,6 @@ function resizeToSquare(img, sizePx) {
   return canvas;
 }
 
-/**
- * اعمال حاشیه و توسعه اختیاری بوم
- */
 function applyBorder(srcCanvas, borderWidth, borderColor, expandCanvas) {
   const expand = expandCanvas ? 2 : 0;
   const w = srcCanvas.width + expand * 2;
@@ -96,9 +92,6 @@ function applyBorder(srcCanvas, borderWidth, borderColor, expandCanvas) {
   return canvas;
 }
 
-/**
- * اعمال مهر قابل مشاهده در گوشه
- */
 async function applyStamp(canvas, stampImg) {
   const ctx = canvas.getContext('2d');
   const w = canvas.width;
@@ -116,17 +109,13 @@ async function applyStamp(canvas, stampImg) {
   return canvas;
 }
 
-// ——— بخش جدید: واترمارک پراکنده حروفی ———
+// ——— بخش واترمارک مخفی و پراکنده ———
 
-/**
- * محاسبه میانگین رنگ کل تصویر برای همرنگ شدن حروف با پس زمینه
- */
 function getAverageColor(canvas) {
   const ctx = canvas.getContext('2d');
   const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
   let r = 0, g = 0, b = 0, count = 0;
   
-  // برای سرعت بیشتر، پیکسل‌ها را با پرش بررسی می‌کنیم (مثلا هر 10 پیکسل)
   for (let i = 0; i < imgData.length; i += 40) {
     r += imgData[i];
     g += imgData[i + 1];
@@ -137,36 +126,27 @@ function getAverageColor(canvas) {
   return `rgb(${Math.round(r/count)}, ${Math.round(g/count)}, ${Math.round(b/count)})`;
 }
 
-/**
- * پخش کردن حروف یک کلمه به صورت تصادفی در سراسر تصویر
- */
 function applyScatteredWatermark(canvas, textArray) {
   const ctx = canvas.getContext('2d');
   const avgColor = getAverageColor(canvas);
 
-  // تنظیمات فونت بسیار کوچک و رنگ میانگین
   ctx.fillStyle = avgColor;
-  ctx.font = '8px Arial'; // سایز بسیار کوچک
-  ctx.globalAlpha = 0.9;  // کمی شفافیت برای ترکیب بهتر با بافت تصویر
+  ctx.font = '8px Arial'; // سایز ریز
+  ctx.globalAlpha = 0.8;
 
   textArray.forEach(char => {
-    // نادیده گرفتن فاصله‌های خالی
     if (char.trim() === '') return; 
-    
-    // محاسبه مختصات تصادفی در محدوده ابعاد تصویر
     const x = Math.random() * (canvas.width - 20) + 10;
     const y = Math.random() * (canvas.height - 20) + 10;
-    
     ctx.fillText(char, x, y);
   });
 
-  ctx.globalAlpha = 1.0; // بازنشانی آلفا
+  ctx.globalAlpha = 1.0;
   return canvas;
 }
 
-/**
- * فشرده‌سازی به حجم هدف (با پشتیبانی از JPEG برای ماندگاری واترمارک بصری)
- */
+// ——— فشرده‌سازی ———
+
 async function compressToTargetSize(canvas, targetKB) {
   const targetBytes = targetKB * 1024;
 
@@ -214,11 +194,9 @@ document.getElementById('processBtn').addEventListener('click', async () => {
   const borderC  = document.getElementById('borderColorInput').value;
   const doExpand = document.getElementById('canvasExpandInput').checked;
   const doStamp  = document.getElementById('stampEnabledInput').checked;
+  const doWatermark = document.getElementById('watermarkEnabledInput').checked;
 
   const sizePx = cmToPx(sizeCm, dpi);
-  
-  // حروفی که می‌خواهید به صورت تصادفی پخش شوند
-  const secretChars = ['n', 'o', 'r', 'u', 'z', 'k', 'h', 'a', 'n'];
 
   let stampImg = null;
   if (doStamp) {
@@ -238,24 +216,20 @@ document.getElementById('processBtn').addEventListener('click', async () => {
       const dataURL = await fileToDataURL(files[i]);
       const img = await loadImage(dataURL);
 
-      // ۱. تغییر اندازه
       let canvas = resizeToSquare(img, sizePx);
-
-      // ۲. حاشیه (روی تصویر رسم می‌شه)
       canvas = applyBorder(canvas, borderW, borderC, doExpand);
 
-      // ۳. مهر (واترمارک قابل مشاهده)
       if (stampImg) {
         canvas = await applyStamp(canvas, stampImg);
       }
 
-      // ۴. اعمال واترمارک پراکنده و مخفی (حروف تصادفی با میانگین رنگ)
-      canvas = applyScatteredWatermark(canvas, secretChars);
+      // اعمال واترمارک حروف در صورت فعال بودن چک‌باکس
+      if (doWatermark) {
+        canvas = applyScatteredWatermark(canvas, SECRET_CHARS);
+      }
 
-      // ۵. فشرده‌سازی
       const blob = await compressToTargetSize(canvas, targetKB);
 
-      // ۶. دانلود
       const ext  = blob.type === 'image/jpeg' ? 'jpg' : 'png';
       const name = files[i].name.replace(/\.[^/.]+$/, '') + '_processed.' + ext;
       const url  = URL.createObjectURL(blob);
@@ -267,7 +241,7 @@ document.getElementById('processBtn').addEventListener('click', async () => {
 
     } catch (err) {
       console.error(err);
-      setStatus(`❌ خطا در پردازش فایل ${files[i].name}: ${err.message}`);
+      setStatus(`❌ خطا در پردازش فایل ${files[i].name}`);
     }
   }
 
