@@ -1,77 +1,92 @@
-<!doctype html>
-<html lang="fa">
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Batch Image Processor</title>
-  <link rel="stylesheet" href="./style.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ویرایشگر تصویر</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+
   <div class="container">
-    <h1>پردازش دسته‌ای تصاویر</h1>
+    <h1>ویرایشگر تصویر</h1>
 
-    <section class="panel">
-      <div id="dropZone" class="dropzone">فایل‌ها را اینجا Drag & Drop کنید</div>
+    <!-- آپلود تصویر -->
+    <div class="upload-area" id="dropZone">
+      <p>تصویر را اینجا بکشید یا کلیک کنید</p>
+      <input type="file" id="fileInput" accept="image/*" multiple hidden />
+    </div>
 
-      <div class="row">
-        <button id="btnSelect">Select Files</button>
-        <button id="btnClear" class="secondary">Clear List</button>
-      </div>
+    <!-- پیش‌نمایش -->
+    <div class="preview-section" id="previewSection" style="display:none">
+      <canvas id="previewCanvas"></canvas>
+    </div>
 
-      <ul id="fileList"></ul>
-    </section>
+    <!-- تنظیمات -->
+    <div class="settings">
 
-    <section class="panel">
-      <h2>تنظیمات</h2>
+      <!-- کادر (Border) -->
+      <fieldset>
+        <legend>کادر (Border)</legend>
+        <label>فعال <input type="checkbox" id="borderEnabled" /></label>
+        <label>رنگ <input type="color" id="borderColor" value="#000000" /></label>
+        <label>ضخامت (px) <input type="number" id="borderSize" value="10" min="1" max="100" /></label>
+      </fieldset>
 
-      <label class="check">
-        <input type="checkbox" id="enableBorder" checked />
-        افزودن حاشیه (2px مشکی + بوم سفید 5px)
-      </label>
-
-      <label class="check">
-        <input type="checkbox" id="enableStamp" checked />
-        افزودن مهر
-      </label>
-
-      <div class="row">
-        <input id="stampPath" type="text" placeholder="مسیر stamp.png (یا از دکمه انتخاب کن)" />
-        <button id="btnStamp" class="secondary">Choose Stamp</button>
-      </div>
-
-      <label class="check">
-        <input type="checkbox" id="enableCompress" checked />
-        فشرده‌سازی تا حجم هدف (KB)
-      </label>
-
-      <div class="grid2">
-        <label>
-          حجم هدف (KB)
-          <input id="targetKB" type="number" min="1" max="10000" step="0.1" value="350" />
+      <!-- مهر (Stamp) -->
+      <fieldset>
+        <legend>مهر (Stamp)</legend>
+        <label>فعال <input type="checkbox" id="stampEnabled" /></label>
+        <label>متن <input type="text" id="stampText" value="نمونه" /></label>
+        <label>رنگ <input type="color" id="stampColor" value="#ff0000" /></label>
+        <label>اندازه فونت <input type="number" id="stampSize" value="40" min="10" max="200" /></label>
+        <label>موقعیت
+          <select id="stampPosition">
+            <option value="bottom-right">پایین راست</option>
+            <option value="bottom-left">پایین چپ</option>
+            <option value="top-right">بالا راست</option>
+            <option value="top-left">بالا چپ</option>
+            <option value="center">مرکز</option>
+          </select>
         </label>
+      </fieldset>
 
-        <label>
-          عرض هدف (cm)
-          <input id="targetWidthCm" type="number" min="1" step="0.1" value="15" />
+      <!-- تغییر اندازه -->
+      <fieldset>
+        <legend>تغییر اندازه</legend>
+        <label>فعال <input type="checkbox" id="resizeEnabled" /></label>
+        <label>عرض (px) <input type="number" id="resizeWidth" value="800" min="10" /></label>
+        <label>ارتفاع (px) <input type="number" id="resizeHeight" value="600" min="10" /></label>
+        <label>نسبت ابعاد <input type="checkbox" id="keepAspect" checked /></label>
+      </fieldset>
+
+      <!-- فشرده‌سازی -->
+      <fieldset>
+        <legend>فشرده‌سازی</legend>
+        <label>کیفیت (۰ تا ۱) <input type="range" id="quality" min="0.1" max="1" step="0.05" value="0.85" /></label>
+        <span id="qualityValue">0.85</span>
+        <label>فرمت خروجی
+          <select id="outputFormat">
+            <option value="image/jpeg">JPEG</option>
+            <option value="image/png">PNG</option>
+            <option value="image/webp">WebP</option>
+          </select>
         </label>
-      </div>
+      </fieldset>
 
-      <label class="check">
-        <input type="checkbox" id="openOutputs" checked />
-        بعد از اتمام، خروجی‌ها باز شوند
-      </label>
+    </div>
 
-      <div class="row">
-        <button id="btnRun" class="primary">شروع پردازش</button>
-      </div>
-    </section>
+    <!-- دکمه‌ها -->
+    <div class="actions">
+      <button id="previewBtn">پیش‌نمایش</button>
+      <button id="downloadBtn">دانلود همه</button>
+    </div>
 
-    <section class="panel">
-      <h2>Log</h2>
-      <pre id="log"></pre>
-    </section>
+    <!-- لیست فایل‌ها -->
+    <div class="file-list" id="fileList"></div>
+
   </div>
 
-  <script src="./renderer.js"></script>
+  <script src="renderer.js"></script>
 </body>
 </html>
